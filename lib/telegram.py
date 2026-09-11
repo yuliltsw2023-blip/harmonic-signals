@@ -13,6 +13,11 @@ DISCLAIMER = ("⚠️ Analisis edukatif. Bukan sinyal buy/sell. Semua keputusan 
               "dan konsekuensinya tanggung jawab pribadi.")
 
 
+def side_label(cand: dict) -> str:
+    """bull → LONG (buy di PRZ), bear → SHORT (sell di PRZ)."""
+    return "LONG 🟢 (buy di PRZ)" if cand["direction"] == "bull" else "SHORT 🔴 (sell di PRZ)"
+
+
 def format_signal(cand: dict, grade: dict) -> str:
     d = price_decimals(cand["pair"])
     f = lambda x: f"{x:.{d}f}"
@@ -24,6 +29,7 @@ def format_signal(cand: dict, grade: dict) -> str:
 
     lines = [
         f"<b>{esc(cand['pair'])} — {esc(cand['pattern'])} {dirn} on {cand['timeframe']}</b>",
+        f"Arah: <b>{side_label(cand)}</b>",
         f"Grade: <b>{grade['grade']}</b>  ·  D {status}  ·  entry model: {esc(grade.get('entry_model', '-'))}",
         "",
         "<b>Structure</b>",
@@ -78,6 +84,7 @@ def format_caption(cand: dict, grade: dict) -> str:
     dirn = "BULL" if cand["direction"] == "bull" else "BEAR"
     return "\n".join([
         f"<b>{html.escape(cand['pair'])} — {html.escape(cand['pattern'])} {dirn} on {cand['timeframe']}</b>",
+        f"Arah: <b>{side_label(cand)}</b>",
         f"Grade <b>{grade['grade']}</b> · {html.escape(grade.get('entry_model', '-'))} · HTF {html.escape(cand.get('htf_alignment', '-'))}",
         f"PRZ {f(prz['low'])} – {f(prz['high'])} ({prz['confluence']} confluence)",
         f"SL {f(cand['sl'])}",

@@ -26,7 +26,7 @@ def test_format_signal_contains_levels():
     grade = {"grade": "A", "reasoning": ["Bat rapi <2%", "HTF aligned"], "entry_model": "Scaled",
              "invalidation": "close < X", "warnings": ["NFP Jumat"], "source": "claude"}
     msg = format_signal(c, grade)
-    assert "EUR/USD" in msg and "Bat BULL" in msg
+    assert "EUR/USD" in msg and "Bat BULL" in msg and "LONG" in msg
     assert "TP1" in msg and "SL" in msg and "Grade: <b>A</b>" in msg
     assert "NFP" in msg
     assert "Analisis edukatif" in msg

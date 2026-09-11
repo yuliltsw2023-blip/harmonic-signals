@@ -128,8 +128,12 @@ def render_signal_chart(cand: dict, candles: list[dict], grade: dict) -> bytes:
         s.set_color(GRID)
 
     status = "projected D" if cand["d_projected"] else "completed D"
+    side = "LONG" if bull else "SHORT"
     title = (f"{cand['pair']}  {cand['pattern']} {'BULL' if bull else 'BEAR'}  {cand['timeframe']}"
-             f"   ·   Grade {grade['grade']}   ·   {status}")
+             f"   ·   {side}   ·   Grade {grade['grade']}   ·   {status}")
+    ax.text(0.995, 0.97, side, transform=ax.transAxes, color=BG, fontsize=11, fontweight="bold",
+            ha="right", va="top", zorder=9,
+            bbox=dict(boxstyle="round,pad=0.35", facecolor=UP if bull else DOWN, edgecolor="none"))
     ax.text(0.0, 1.055, title, transform=ax.transAxes, color=TXT, fontsize=12,
             fontweight="bold", va="bottom")
     ax.text(0.0, 1.012, f"harga {fmt(cand['current_price'])} @ {cand['current_datetime']} UTC"
