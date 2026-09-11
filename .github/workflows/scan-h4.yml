@@ -1,0 +1,42 @@
+name: Scan H4 Harmonic Patterns
+
+on:
+  schedule:
+    # UTC. Tiap 4 jam, 5 menit setelah bar H4 close.
+    # Free tier Twelve Data delay ~4 jam → yang ter-fetch bar sebelumnya
+    # (lihat README "Data delay"). Dedup mencegah double-send.
+    - cron: "5 0,4,8,12,16,20 * * *"
+  workflow_dispatch:
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run H4 scan
+        env:
+          TWELVEDATA_API_KEY: ${{ secrets.TWELVEDATA_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CLAUDE_MODEL: ${{ vars.CLAUDE_MODEL || 'claude-sonnet-5' }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          UPSTASH_REDIS_REST_URL: ${{ secrets.UPSTASH_REDIS_REST_URL }}
+          UPSTASH_REDIS_REST_TOKEN: ${{ secrets.UPSTASH_REDIS_REST_TOKEN }}
+          LOG_LEVEL: info
+          DRY_RUN: ${{ vars.DRY_RUN || 'false' }}
+        run: python scripts/scan_h4.py
