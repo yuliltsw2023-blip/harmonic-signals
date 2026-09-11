@@ -95,3 +95,24 @@ def test_chart_img_request_shape_and_fallback(monkeypatch):
     calls.clear()
     telegram.send_signal(c, grade, synthetic_bat())
     assert calls[0] == ("photo", b"\x89PNG") and c["chart_source"].startswith("chart-img")
+
+
+def test_layout_chart_preferred_when_layout_id_set(monkeypatch):
+    from lib import chart_img, telegram
+    c = analyze_candles("GBP/USD", "H4", synthetic_bat())[0]
+    grade = {"grade": "A", "entry_model": "Scaled", "reasoning": [], "source": "rule"}
+    monkeypatch.setenv("CHART_IMG_API_KEY", "dummy")
+    monkeypatch.setenv("CHART_IMG_LAYOUT_ID", "abc123")
+    seen = []
+    class OK:
+        status_code = 200; headers = {"content-type": "image/png"}; content = b"\x89PNGlayout"; text = ""
+    def fake_post(url, json=None, headers=None, timeout=None):
+        seen.append((url, json)); return OK()
+    monkeypatch.setattr(chart_img.requests, "post", fake_post)
+    calls = []
+    monkeypatch.setattr(telegram, "send_photo", lambda png, cap: calls.append(cap))
+    monkeypatch.setattr(telegram, "send_message", lambda text: None)
+    telegram.send_signal(c, grade, synthetic_bat())
+    assert seen[0][0].endswith("/layout-chart/abc123")
+    assert seen[0][1]["symbol"] == "OANDA:GBPUSD" and seen[0][1]["interval"] == "4h"
+    assert "TradingView layout" in calls[0]

@@ -90,7 +90,7 @@ def format_caption(cand: dict, grade: dict) -> str:
         f"SL {f(cand['sl'])}",
         f"TP1 {f(cand['tps']['tp1'])} · TP2 {f(cand['tps']['tp2'])} · TP3 {f(cand['tps']['tp3'])}",
         f"R:R ke TP2 {cand['rr']['tp2']:.1f}:1",
-        "<i>detail di pesan berikutnya</i>",
+        f"<i>detail di pesan berikutnya · chart: {html.escape(cand.get('chart_source', '-'))}</i>",
     ])
 
 
@@ -130,12 +130,20 @@ def send_signal(cand: dict, grade: dict, candles: list[dict] | None = None) -> d
     """Foto chart (kalau candles tersedia & render sukses) lalu pesan detail."""
     png = None
     if os.environ.get("CHART_IMG_API_KEY", "").strip():
-        try:
-            from lib.chart_img import render_chart_img
-            png = render_chart_img(cand, grade)
-            cand["chart_source"] = "chart-img (TradingView)"
-        except Exception as e:  # noqa: BLE001
-            print(f"[warn] chart-img gagal ({type(e).__name__}: {e}), fallback matplotlib")
+        if os.environ.get("CHART_IMG_LAYOUT_ID", "").strip():
+            try:
+                from lib.chart_img import render_layout_chart
+                png = render_layout_chart(cand)
+                cand["chart_source"] = "TradingView layout (chart-img)"
+            except Exception as e:  # noqa: BLE001
+                print(f"[warn] chart-img layout gagal ({type(e).__name__}: {e})")
+        if png is None:
+            try:
+                from lib.chart_img import render_chart_img
+                png = render_chart_img(cand, grade)
+                cand["chart_source"] = "chart-img (TradingView)"
+            except Exception as e:  # noqa: BLE001
+                print(f"[warn] chart-img gagal ({type(e).__name__}: {e}), fallback matplotlib")
     if png is None and candles:
         try:
             from lib.chart import render_signal_chart

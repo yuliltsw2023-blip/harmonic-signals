@@ -13,6 +13,7 @@ from datetime import datetime, timedelta, timezone
 import requests
 
 API_URL = "https://api.chart-img.com/v2/tradingview/advanced-chart"
+LAYOUT_URL = "https://api.chart-img.com/v2/tradingview/layout-chart/{layout_id}"
 INTERVAL_OF = {"H4": "4h", "D1": "1D"}
 BAR_HOURS = {"H4": 4, "D1": 24}
 
@@ -109,4 +110,28 @@ def render_chart_img(cand: dict, grade: dict, api_key: str | None = None, timeou
                          timeout=timeout)
     if resp.status_code != 200 or not resp.headers.get("content-type", "").startswith("image/"):
         raise RuntimeError(f"chart-img {resp.status_code}: {resp.text[:300]}")
+    return resp.content
+
+
+def render_layout_chart(cand: dict, api_key: str | None = None, layout_id: str | None = None,
+                        timeout: float = 120) -> bytes:
+    """Screenshot layout TradingView milik user (shared) — indikator Pine
+    Harmonic XABCD di layout itulah yang menggambar pattern, PRZ, SL/TP.
+    Tidak kena limit 3 drawing. Butuh CHART_IMG_LAYOUT_ID (layout harus
+    di-set "Share layout" di TradingView)."""
+    api_key = (api_key or os.environ.get("CHART_IMG_API_KEY", "")).strip()
+    layout_id = (layout_id or os.environ.get("CHART_IMG_LAYOUT_ID", "")).strip()
+    if not api_key or not layout_id:
+        raise RuntimeError("CHART_IMG_API_KEY / CHART_IMG_LAYOUT_ID kosong")
+    body = {
+        "symbol": tv_symbol(cand["pair"]),
+        "interval": INTERVAL_OF[cand["timeframe"]],
+        "width": int(os.environ.get("CHART_IMG_WIDTH", "800")),
+        "height": int(os.environ.get("CHART_IMG_HEIGHT", "600")),
+    }
+    resp = requests.post(LAYOUT_URL.format(layout_id=layout_id), json=body,
+                         headers={"x-api-key": api_key, "content-type": "application/json"},
+                         timeout=timeout)
+    if resp.status_code != 200 or not resp.headers.get("content-type", "").startswith("image/"):
+        raise RuntimeError(f"chart-img layout {resp.status_code}: {resp.text[:300]}")
     return resp.content
