@@ -98,9 +98,11 @@ def grade_setup(cand: dict, client: anthropic.Anthropic | None = None) -> dict:
         rule_grade(cand)
     rule = cand["rule_grade"]
 
-    if os.environ.get("GRADER") == "rule":
+    no_key = not os.environ.get("ANTHROPIC_API_KEY") and not os.environ.get("ANTHROPIC_AUTH_TOKEN")
+    if os.environ.get("GRADER") == "rule" or no_key:
+        why = "GRADER=rule" if os.environ.get("GRADER") == "rule" else "ANTHROPIC_API_KEY kosong"
         factors = ", ".join(f"{k} {v}" for k, v in rule["factors"].items())
-        return {**rule, "reasoning": [f"Rule-only mode (GRADER=rule). Faktor: {factors}"],
+        return {**rule, "reasoning": [f"Rule-only mode ({why}). Faktor: {factors}"],
                 "entry_model": "Conservative", "invalidation": "close beyond X ± buffer",
                 "warnings": [], "confidence": "medium", "source": "rule"}
 
@@ -138,7 +140,7 @@ def grade_setup(cand: dict, client: anthropic.Anthropic | None = None) -> dict:
                 "cache_read": getattr(resp.usage, "cache_read_input_tokens", 0),
             },
         }
-    except (anthropic.APIError, RuntimeError, ValueError) as e:
+    except (anthropic.APIError, RuntimeError, ValueError, TypeError) as e:
         print(f"[warn] Claude grading gagal ({type(e).__name__}: {e}) → fallback rule grade")
         return {
             **rule,

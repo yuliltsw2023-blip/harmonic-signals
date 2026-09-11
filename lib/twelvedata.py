@@ -56,6 +56,7 @@ class TwelveDataClient:
                         "outputsize": outputsize,
                         "apikey": self.api_key,
                         "order": "ASC",
+                        "timezone": "UTC",
                     },
                     timeout=15,
                 )
