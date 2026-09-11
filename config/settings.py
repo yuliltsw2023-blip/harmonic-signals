@@ -21,8 +21,25 @@ PRZ_BAND_PCT = 0.005
 # masuk dalam PRZ band.
 STRUCTURAL_LOOKBACK_PIVOTS = 12
 
+# --- Per asset class (skill: cross-asset adjustments) ------------------------
+# prz_band   : level dihitung convergent kalau dalam +/-band dari level utama
+# approach   : jarak harga ke PRZ yang masih dianggap actionable
+# sl_buf_xa  : buffer SL = persen panjang XA
+# sl_min_pct : buffer SL minimum sebagai persen harga (crypto 1.5% beyond X)
+ASSET_PARAMS = {
+    "forex":  {"prz_band": 0.005, "approach": 0.0035, "sl_buf_xa": 0.05, "sl_min_pct": 0.0},
+    "metal":  {"prz_band": 0.006, "approach": 0.0040, "sl_buf_xa": 0.05, "sl_min_pct": 0.0},
+    "crypto": {"prz_band": 0.010, "approach": 0.0060, "sl_buf_xa": 0.10, "sl_min_pct": 0.015},
+}
+
+
+def asset_params(pair: str) -> dict:
+    from config.pairs import asset_class
+    return ASSET_PARAMS[asset_class(pair)]
+
+
 # --- Risk ---------------------------------------------------------------------
-SL_BUFFER_XA = 0.05        # 5% dari panjang leg XA, beyond X
+SL_BUFFER_XA = 0.05        # 5% dari panjang leg XA, beyond X (default forex)
 MIN_RR_TP2_PREGRADE = 1.5  # di bawah ini langsung FAIL sebelum ke Claude
 
 # --- Grading ------------------------------------------------------------------

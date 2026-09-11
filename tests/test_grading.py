@@ -63,3 +63,29 @@ def test_sl_relative_to_entry_all_candidates():
                 assert c["sl"] < c["entry"] < c["tps"]["tp1"], (c["pattern"], c["sl"], c["entry"])
             else:
                 assert c["sl"] > c["entry"] > c["tps"]["tp1"], (c["pattern"], c["sl"], c["entry"])
+
+
+def test_asset_class_params_and_symbols():
+    from config.pairs import asset_class, price_decimals, round_step, market_247, tv_exchange, SCAN_SYMBOLS
+    from config import settings
+    assert "XAU/USD" in SCAN_SYMBOLS and "BTC/USD" in SCAN_SYMBOLS and len(SCAN_SYMBOLS) == 30
+    assert asset_class("BTC/USD") == "crypto" and asset_class("XAU/USD") == "metal" and asset_class("EUR/USD") == "forex"
+    assert price_decimals("BTC/USD") == 1 and price_decimals("XAU/USD") == 2 and price_decimals("USD/JPY") == 3
+    assert round_step("BTC/USD") == 1000 and round_step("XAU/USD") == 50 and round_step("EUR/USD") == 0.01
+    assert market_247("BTC/USD") and not market_247("XAU/USD") and not market_247("EUR/USD")
+    assert tv_exchange("BTC/USD") == "BITSTAMP" and tv_exchange("XAU/USD") == "OANDA"
+    assert settings.asset_params("BTC/USD")["sl_min_pct"] == 0.015
+
+
+def test_btc_sl_buffer_at_least_1_5_pct():
+    from tests.fixtures import synthetic_bat
+    candles = synthetic_bat(bull=True, projected=True, base=1.1)
+    for c in candles:  # skala ke harga BTC
+        for k in ("open", "high", "low", "close"):
+            c[k] = c[k] * 70000
+    cands = [c for c in analyze_candles("BTC/USD", "H4", candles) if c["pattern"] == "Bat"]
+    assert cands, "Bat tidak terdeteksi di BTC sintetis"
+    c = cands[0]
+    X = c["points"]["X"]["price"]
+    assert c["asset_class"] == "crypto"
+    assert X - c["sl"] >= X * 0.015 - 1e-6

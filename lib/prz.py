@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from config import settings
+from config.pairs import round_step
 from config.patterns import AB_CD_PROJECTIONS, PATTERNS
 
 
@@ -49,9 +50,9 @@ def _structural_levels(cand: dict, pivots: list[dict] | None) -> list[dict]:
         prior = [p for p in pivots if p["idx"] < x_idx and p["type"] == want]
         for p in prior[-settings.STRUCTURAL_LOOKBACK_PIVOTS:]:
             out.append({"name": f"prev swing {p['datetime'][:10]}", "price": p["price"], "kind": "structural"})
-    # round number: kelipatan 0.0100 (non-JPY) / 1.00 (JPY)
+    # round number psikologis per asset (forex 0.0100/1.00, XAU 50, BTC 1000)
     d = cand["d_ideal"]
-    step = 1.0 if cand["pair"].endswith("JPY") else 0.01
+    step = round_step(cand["pair"])
     rn = round(d / step) * step
     out.append({"name": f"round {rn:g}", "price": rn, "kind": "structural"})
     return out
@@ -61,7 +62,7 @@ def construct_prz(cand: dict, pivots: list[dict] | None = None) -> dict:
     """Bangun PRZ dari level yang jatuh dalam band PRZ_BAND_PCT di sekitar
     level utama pattern. Mengisi cand["prz"] dan mengembalikannya."""
     primary = cand["d_ideal"]
-    band = primary * settings.PRZ_BAND_PCT
+    band = primary * settings.asset_params(cand["pair"])["prz_band"]
     fib = _fib_levels(cand)
     structural = _structural_levels(cand, pivots)
 

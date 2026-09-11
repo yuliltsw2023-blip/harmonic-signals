@@ -21,10 +21,45 @@ MAJOR_PAIRS = [
 ]
 
 
+# Non-forex yang ikut di-scan. Asset class menentukan desimal, lebar PRZ,
+# buffer SL, round number, jam pasar, dan exchange TradingView.
+EXTRA_SYMBOLS = ["XAU/USD", "BTC/USD"]
+SCAN_SYMBOLS = MAJOR_PAIRS + EXTRA_SYMBOLS
+
+ASSET_CLASS = {"XAU/USD": "metal", "BTC/USD": "crypto"}
+
+
+def asset_class(pair: str) -> str:
+    return ASSET_CLASS.get(pair, "forex")
+
+
 def price_decimals(pair: str) -> int:
-    """JPY pairs quoted 3 desimal, sisanya 5."""
+    ac = asset_class(pair)
+    if ac == "crypto":
+        return 1
+    if ac == "metal":
+        return 2
     return 3 if pair.endswith("JPY") else 5
 
 
 def pip_size(pair: str) -> float:
-    return 0.01 if pair.endswith("JPY") else 0.0001
+    return 10 ** -(price_decimals(pair) - 1)
+
+
+def round_step(pair: str) -> float:
+    """Jarak round number psikologis untuk confluence structural."""
+    ac = asset_class(pair)
+    if ac == "crypto":
+        return 1000.0
+    if ac == "metal":
+        return 50.0
+    return 1.0 if pair.endswith("JPY") else 0.01
+
+
+def market_247(pair: str) -> bool:
+    """Crypto buka terus; forex & metal tutup weekend."""
+    return asset_class(pair) == "crypto"
+
+
+def tv_exchange(pair: str) -> str:
+    return "BITSTAMP" if asset_class(pair) == "crypto" else "OANDA"

@@ -35,7 +35,8 @@ def _parse(dt_str: str) -> datetime:
 
 
 def tv_symbol(pair: str, exchange: str | None = None) -> str:
-    exchange = exchange or os.environ.get("CHART_IMG_EXCHANGE", "OANDA")
+    from config.pairs import tv_exchange
+    exchange = exchange or tv_exchange(pair)
     return f"{exchange}:{pair.replace('/', '')}"
 
 

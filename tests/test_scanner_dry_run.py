@@ -71,3 +71,13 @@ def test_weekend_skip(monkeypatch):
     monkeypatch.setenv("TWELVEDATA_API_KEY", "x")
     monkeypatch.setattr(scanner, "is_forex_closed", lambda now=None: True)
     assert scanner.run_scan("H4", pairs=["EUR/USD"], dry_run=True) == 0
+
+
+def test_weekend_still_scans_crypto(monkeypatch, capsys):
+    _setup(monkeypatch)
+    monkeypatch.setattr(scanner, "is_forex_closed", lambda now=None: True)
+    rc = scanner.run_scan("H4", pairs=["EUR/USD", "BTC/USD"], dry_run=True)
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "1 pair dilewati, 1 pair 24/7 tetap di-scan" in out
+    assert '"pairs_scanned": 1' in out

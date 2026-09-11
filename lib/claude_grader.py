@@ -48,6 +48,10 @@ tertangkap rule (mis. PRZ terlalu lebar, D projected masih jauh, struktur
 over-extended, round number besar di PRZ, dsb). JANGAN menaikkan grade di
 atas rule grade. Kalau ragu, turunkan.
 
+Cross-asset: crypto (BTC) - SL buffer lebih lebar (>=1.5% beyond X), hindari
+entry weekend (volume tipis), PRZ boleh sampai 1%. Metal (XAU) - sensitif
+FOMC/CPI/geopolitik, round number kelipatan 50 kuat. Forex - session London/NY.
+
 Pilih entry_model: Scaled kalau PRZ lebar (>0.2%) atau setup high conviction;
 Conservative kalau HTF netral/counter atau pattern Butterfly/Cypher;
 Aggressive hanya Grade A dengan HTF aligned.
@@ -61,7 +65,7 @@ def _fmt(cand: dict) -> str:
     f = lambda x: f"{x:.{d}f}"
     p = cand["points"]
     lines = [
-        f"PAIR: {cand['pair']}  TF: {cand['timeframe']}",
+        f"PAIR: {cand['pair']}  TF: {cand['timeframe']}  ASSET: {cand.get('asset_class', 'forex')}",
         f"PATTERN: {cand['pattern']} {cand['direction'].upper()}  "
         f"({'projected D' if cand['d_projected'] else 'completed D'})",
         f"X={f(p['X']['price'])} ({p['X']['datetime']})",

@@ -177,8 +177,10 @@ def build_candidate(pair: str, timeframe: str, match: dict, candles: list[dict])
     last = candles[-1]
     d_point = s["D"]
     d_date_src = d_point["datetime"] if d_point else s["C"]["datetime"]
+    from config.pairs import asset_class
     return {
         "pair": pair,
+        "asset_class": asset_class(pair),
         "timeframe": timeframe,
         "pattern": match["pattern"],
         "direction": s["direction"],

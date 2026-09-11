@@ -28,7 +28,8 @@ def calculate_sl(cand: dict) -> float:
     p = cand["points"]
     X, A = p["X"]["price"], p["A"]["price"]
     prz = cand["prz"]
-    buffer = abs(A - X) * settings.SL_BUFFER_XA
+    ap = settings.asset_params(cand["pair"])
+    buffer = max(abs(A - X) * ap["sl_buf_xa"], X * ap["sl_min_pct"])
     if cand["direction"] == "bull":
         sl = min(X, prz["low"]) - buffer
     else:
@@ -104,10 +105,11 @@ def pre_grade(cand: dict) -> str:
         reasons.append("harga sudah lewat SL/X — pattern void")
 
     dist = cand["prz_distance_pct"]
+    approach = settings.asset_params(cand["pair"])["approach"]
     if cand["d_projected"]:
-        if dist > settings.PRZ_APPROACH_PCT:
+        if dist > approach:
             reasons.append(f"harga masih {dist:.2%} dari PRZ (belum actionable)")
-        if dist < -settings.PRZ_APPROACH_PCT:
+        if dist < -approach:
             reasons.append("harga menembus PRZ terlalu jauh")
 
     if cand["rr"]["tp2"] < settings.MIN_RR_TP2_PREGRADE:

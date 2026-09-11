@@ -9,7 +9,7 @@ import traceback
 from datetime import datetime, timezone
 
 from config import settings
-from config.pairs import MAJOR_PAIRS
+from config.pairs import SCAN_SYMBOLS, market_247
 from lib.claude_grader import grade_setup
 from lib.grading import enrich_levels, htf_alignment, htf_trend, pre_grade, rule_grade
 from lib.harmonics import build_candidate, extract_xabcd, match_pattern
@@ -59,11 +59,14 @@ def _utf8_console() -> None:
 
 def run_scan(timeframe: str, pairs: list[str] | None = None, dry_run: bool | None = None) -> int:
     _utf8_console()
+    pairs = pairs or SCAN_SYMBOLS
     if is_forex_closed():
-        print(f"[skip] Forex market closed ({datetime.now(timezone.utc).isoformat()})")
-        return 0
-
-    pairs = pairs or MAJOR_PAIRS
+        skipped = [p for p in pairs if not market_247(p)]
+        pairs = [p for p in pairs if market_247(p)]
+        print(f"[skip] Forex/metal market closed ({datetime.now(timezone.utc).isoformat()}) "
+              f"- {len(skipped)} pair dilewati, {len(pairs)} pair 24/7 tetap di-scan")
+        if not pairs:
+            return 0
     if dry_run is None:
         dry_run = os.environ.get("DRY_RUN", "false").lower() == "true"
     interval = INTERVAL_OF[timeframe]

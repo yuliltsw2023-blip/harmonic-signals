@@ -1,7 +1,7 @@
 # harmonic-signals
 
 Scanner harmonic pattern (Bat, Gartley, Crab, Deep Crab, Butterfly, Cypher)
-untuk 28 pair forex di H4 + D1. Deteksi mekanis di Python, grading oleh Claude
+untuk 28 pair forex + XAU/USD + BTC/USD di H4 + D1. Deteksi mekanis di Python, grading oleh Claude
 memakai rubric skill `harmonic-pattern-trading`, kirim ke Telegram, dedup di
 Upstash Redis, jalan di GitHub Actions cron. Total biaya ≈ Claude API saja.
 
@@ -80,14 +80,15 @@ skip Sabtu, Minggu <22:00 UTC, dan Jumat ≥22:00 UTC.
 
 | Scan | Request/hari |
 |------|--------------|
-| H4 × 6 × 28 pair | 168 |
-| D1 × 1 × 28 pair | 28 |
+| H4 × 6 × 30 simbol | 180 |
+| D1 × 1 × 30 simbol | 30 |
 | HTF (lazy, hanya pair yang lolos pre-grade) | biasanya 0–10 |
-| **Total** | **≈ 200–210** |
+| **Total** | **≈ 215–225** |
 
 ## Tuning
 
-Semua knob di `config/settings.py`: pivot left/right, `MIN_LEG_ATR`,
+Simbol & asset class di `config/pairs.py` (XAU = metal, BTC = crypto, 24/7).
+Parameter per asset (`ASSET_PARAMS`) dan knob lain di `config/settings.py`: pivot left/right, `MIN_LEG_ATR`,
 `PRZ_APPROACH_PCT` (seberapa dekat harga ke PRZ sebelum dianggap actionable),
 `MAX_D_AGE_BARS`, `PRZ_BAND_PCT`, `SL_BUFFER_XA`, threshold R:R & confluence
 per grade. Katalog rasio di `config/patterns.py`.
