@@ -14,8 +14,8 @@ def _client():
     global _redis
     if _redis is not None:
         return _redis
-    url = os.environ.get("UPSTASH_REDIS_REST_URL")
-    token = os.environ.get("UPSTASH_REDIS_REST_TOKEN")
+    url = os.environ.get("UPSTASH_REDIS_REST_URL", "").strip()
+    token = os.environ.get("UPSTASH_REDIS_REST_TOKEN", "").strip()
     if not url or not token:
         return None
     from upstash_redis import Redis

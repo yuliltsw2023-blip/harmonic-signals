@@ -40,3 +40,9 @@ CLAUDE_MAX_TOKENS = 4096
 # kandidat lolos pre-grade) supaya hemat budget Twelve Data.
 HTF_OF = {"H4": "1day", "D1": "1week"}
 HTF_OUTPUTSIZE = 120
+
+
+def env(name: str, default: str = "") -> str:
+    """Baca env var dan buang spasi/enter di ujung — secret yang di-paste ke
+    GitHub sering kebawa newline dan bikin 'Illegal header value'."""
+    return os.environ.get(name, default).strip()

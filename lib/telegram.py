@@ -71,8 +71,8 @@ def format_signal(cand: dict, grade: dict) -> str:
 
 
 def send_message(text: str, parse_mode: str = "HTML") -> dict:
-    token = os.environ["TELEGRAM_BOT_TOKEN"]
-    chat_id = os.environ["TELEGRAM_CHAT_ID"]
+    token = os.environ["TELEGRAM_BOT_TOKEN"].strip()
+    chat_id = os.environ["TELEGRAM_CHAT_ID"].strip()
     resp = requests.post(
         f"https://api.telegram.org/bot{token}/sendMessage",
         json={"chat_id": chat_id, "text": text, "parse_mode": parse_mode,

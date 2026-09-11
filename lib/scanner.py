@@ -71,7 +71,7 @@ def run_scan(timeframe: str, pairs: list[str] | None = None, dry_run: bool | Non
     print(f"[start] {timeframe} scan · {len(pairs)} pair · DRY_RUN={dry_run} · "
           f"state={backend_name()} · model={settings.CLAUDE_MODEL}")
 
-    tdc = TwelveDataClient(api_key=os.environ["TWELVEDATA_API_KEY"])
+    tdc = TwelveDataClient(api_key=settings.env("TWELVEDATA_API_KEY"))
 
     stats = {k: 0 for k in ("pairs_scanned", "structures_matched", "skipped_pregrade",
                             "skipped_duplicate", "grade_c", "signals_sent")}

@@ -98,7 +98,7 @@ def grade_setup(cand: dict, client: anthropic.Anthropic | None = None) -> dict:
         rule_grade(cand)
     rule = cand["rule_grade"]
 
-    no_key = not os.environ.get("ANTHROPIC_API_KEY") and not os.environ.get("ANTHROPIC_AUTH_TOKEN")
+    no_key = not settings.env("ANTHROPIC_API_KEY") and not settings.env("ANTHROPIC_AUTH_TOKEN")
     if os.environ.get("GRADER") == "rule" or no_key:
         why = "GRADER=rule" if os.environ.get("GRADER") == "rule" else "ANTHROPIC_API_KEY kosong"
         factors = ", ".join(f"{k} {v}" for k, v in rule["factors"].items())
@@ -106,7 +106,7 @@ def grade_setup(cand: dict, client: anthropic.Anthropic | None = None) -> dict:
                 "entry_model": "Conservative", "invalidation": "close beyond X ± buffer",
                 "warnings": [], "confidence": "medium", "source": "rule"}
 
-    client = client or anthropic.Anthropic()
+    client = client or anthropic.Anthropic(api_key=settings.env("ANTHROPIC_API_KEY"))
     model = settings.CLAUDE_MODEL
     try:
         resp = client.messages.parse(
@@ -140,7 +140,7 @@ def grade_setup(cand: dict, client: anthropic.Anthropic | None = None) -> dict:
                 "cache_read": getattr(resp.usage, "cache_read_input_tokens", 0),
             },
         }
-    except (anthropic.APIError, RuntimeError, ValueError, TypeError) as e:
+    except Exception as e:  # noqa: BLE001 — grading gagal apa pun sebabnya → rule fallback
         print(f"[warn] Claude grading gagal ({type(e).__name__}: {e}) → fallback rule grade")
         return {
             **rule,
