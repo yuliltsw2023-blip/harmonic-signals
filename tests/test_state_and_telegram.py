@@ -38,3 +38,30 @@ def test_forex_closed_schedule():
     assert not is_forex_closed(datetime(2026, 9, 13, 23, tzinfo=timezone.utc))  # Minggu 23 UTC
     assert is_forex_closed(datetime(2026, 9, 11, 23, tzinfo=timezone.utc))      # Jumat 23 UTC
     assert not is_forex_closed(datetime(2026, 9, 9, 12, tzinfo=timezone.utc))   # Rabu
+
+
+def test_chart_renders_png_and_caption_short():
+    from lib.chart import render_signal_chart
+    from lib.telegram import format_caption
+    c = analyze_candles("EUR/USD", "H4", synthetic_bat())[0]
+    c["htf_alignment"] = "aligned"
+    grade = {"grade": "A", "entry_model": "Scaled", "reasoning": [], "source": "claude"}
+    png = render_signal_chart(c, synthetic_bat(), grade)
+    assert png[:8] == b"\x89PNG\r\n\x1a\n"
+    assert len(png) > 20_000
+    assert len(format_caption(c, grade)) < 1024
+
+
+def test_send_signal_sends_photo_then_text(monkeypatch):
+    from lib import telegram
+    calls = []
+    monkeypatch.setattr(telegram, "send_photo", lambda png, cap: calls.append(("photo", len(png))))
+    monkeypatch.setattr(telegram, "send_message", lambda text: calls.append(("text", len(text))))
+    c = analyze_candles("EUR/USD", "H4", synthetic_bat())[0]
+    grade = {"grade": "B", "entry_model": "Conservative", "reasoning": ["x"], "source": "rule"}
+    telegram.send_signal(c, grade, synthetic_bat())
+    assert [k for k, _ in calls] == ["photo", "text"]
+    # tanpa candles → teks saja
+    calls.clear()
+    telegram.send_signal(c, grade)
+    assert [k for k, _ in calls] == ["text"]

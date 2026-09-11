@@ -31,6 +31,7 @@ ap.add_argument("timeframe", nargs="?", default="H4", choices=["H4", "D1"])
 ap.add_argument("--csv")
 ap.add_argument("--grade", action="store_true")
 ap.add_argument("--send", action="store_true")
+ap.add_argument("--png", help="simpan chart ke file PNG")
 args = ap.parse_args()
 
 if args.csv:
@@ -73,5 +74,10 @@ for c in cands:
         g = grade_setup(c)
         print("  grade:", json.dumps(g, ensure_ascii=False, indent=2))
         print("\n" + format_signal(c, g))
+        if args.png:
+            from lib.chart import render_signal_chart
+            with open(args.png, "wb") as fh:
+                fh.write(render_signal_chart(c, candles, g))
+            print("  chart:", args.png)
         if args.send:
-            print(send_signal(c, g))
+            print(send_signal(c, g, candles))

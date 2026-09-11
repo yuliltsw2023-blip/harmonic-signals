@@ -37,7 +37,7 @@ def _setup(monkeypatch):
 def test_dry_run_does_not_send_or_mark(monkeypatch, capsys):
     _setup(monkeypatch)
     sent = []
-    monkeypatch.setattr(scanner, "send_signal", lambda c, g: sent.append(c))
+    monkeypatch.setattr(scanner, "send_signal", lambda c, g, candles=None: sent.append(c))
     rc = scanner.run_scan("H4", pairs=["EUR/USD", "GBP/USD"], dry_run=True)
     out = capsys.readouterr().out
     assert rc == 0
@@ -49,7 +49,7 @@ def test_dry_run_does_not_send_or_mark(monkeypatch, capsys):
 def test_live_sends_once_then_dedups(monkeypatch):
     _setup(monkeypatch)
     sent = []
-    monkeypatch.setattr(scanner, "send_signal", lambda c, g: sent.append((c["pair"], g["grade"])))
+    monkeypatch.setattr(scanner, "send_signal", lambda c, g, candles=None: sent.append((c["pair"], g["grade"])))
     assert scanner.run_scan("H4", pairs=["EUR/USD"], dry_run=False) == 0
     assert sent == [("EUR/USD", "A")]
     assert scanner.run_scan("H4", pairs=["EUR/USD"], dry_run=False) == 0

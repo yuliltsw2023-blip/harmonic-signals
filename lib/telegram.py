@@ -70,9 +70,43 @@ def format_signal(cand: dict, grade: dict) -> str:
     return "\n".join(lines)
 
 
+def format_caption(cand: dict, grade: dict) -> str:
+    """Caption foto (limit Telegram 1024 char): ringkasan level saja."""
+    d = price_decimals(cand["pair"])
+    f = lambda x: f"{x:.{d}f}"
+    prz = cand["prz"]
+    dirn = "BULL" if cand["direction"] == "bull" else "BEAR"
+    return "\n".join([
+        f"<b>{html.escape(cand['pair'])} — {html.escape(cand['pattern'])} {dirn} on {cand['timeframe']}</b>",
+        f"Grade <b>{grade['grade']}</b> · {html.escape(grade.get('entry_model', '-'))} · HTF {html.escape(cand.get('htf_alignment', '-'))}",
+        f"PRZ {f(prz['low'])} – {f(prz['high'])} ({prz['confluence']} confluence)",
+        f"SL {f(cand['sl'])}",
+        f"TP1 {f(cand['tps']['tp1'])} · TP2 {f(cand['tps']['tp2'])} · TP3 {f(cand['tps']['tp3'])}",
+        f"R:R ke TP2 {cand['rr']['tp2']:.1f}:1",
+        "<i>detail di pesan berikutnya</i>",
+    ])
+
+
+def _creds() -> tuple[str, str]:
+    return os.environ["TELEGRAM_BOT_TOKEN"].strip(), os.environ["TELEGRAM_CHAT_ID"].strip()
+
+
+def send_photo(png: bytes, caption: str, parse_mode: str = "HTML") -> dict:
+    token, chat_id = _creds()
+    resp = requests.post(
+        f"https://api.telegram.org/bot{token}/sendPhoto",
+        data={"chat_id": chat_id, "caption": caption, "parse_mode": parse_mode},
+        files={"photo": ("signal.png", png, "image/png")},
+        timeout=30,
+    )
+    data = resp.json()
+    if not data.get("ok"):
+        raise RuntimeError(f"Telegram sendPhoto error: {data}")
+    return data
+
+
 def send_message(text: str, parse_mode: str = "HTML") -> dict:
-    token = os.environ["TELEGRAM_BOT_TOKEN"].strip()
-    chat_id = os.environ["TELEGRAM_CHAT_ID"].strip()
+    token, chat_id = _creds()
     resp = requests.post(
         f"https://api.telegram.org/bot{token}/sendMessage",
         json={"chat_id": chat_id, "text": text, "parse_mode": parse_mode,
@@ -85,5 +119,12 @@ def send_message(text: str, parse_mode: str = "HTML") -> dict:
     return data
 
 
-def send_signal(cand: dict, grade: dict) -> dict:
+def send_signal(cand: dict, grade: dict, candles: list[dict] | None = None) -> dict:
+    """Foto chart (kalau candles tersedia & render sukses) lalu pesan detail."""
+    if candles:
+        try:
+            from lib.chart import render_signal_chart
+            send_photo(render_signal_chart(cand, candles, grade), format_caption(cand, grade))
+        except Exception as e:  # noqa: BLE001 — chart gagal jangan sampai batalin sinyal
+            print(f"[warn] chart gagal ({type(e).__name__}: {e}), kirim teks saja")
     return send_message(format_signal(cand, grade))

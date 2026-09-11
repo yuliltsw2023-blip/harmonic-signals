@@ -122,7 +122,7 @@ def run_scan(timeframe: str, pairs: list[str] | None = None, dry_run: bool | Non
                 if dry_run:
                     print(f"[dry_run] Would send: {tag} Grade {grade['grade']}")
                 else:
-                    send_signal(cand, grade)
+                    send_signal(cand, grade, candles)
                     mark_signaled(cand)
                     print(f"[sent] {tag} Grade {grade['grade']}")
                 stats["signals_sent"] += 1

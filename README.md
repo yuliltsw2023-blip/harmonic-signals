@@ -22,7 +22,8 @@ Twelve Data (OHLC, 200 bar)
                          pre-grade (filter murah), HTF alignment, rule grade
    └─ lib/state.py       dedup Upstash (fallback in-memory)
    └─ lib/claude_grader.py  Claude → JSON {grade, reasoning, entry_model,...}
-   └─ lib/telegram.py    format MDB-style → Bot API
+   └─ lib/chart.py       PNG candlestick + XABCD + PRZ + SL/TP (matplotlib)
+   └─ lib/telegram.py    sendPhoto (chart + caption) lalu sendMessage detail MDB-style
 lib/scanner.py = orchestrator; scripts/scan_h4.py & scan_d1.py = entry point.
 ```
 
@@ -45,6 +46,7 @@ python scripts/manual/test_twelvedata.py EUR/USD 4h   # Fase 1: fetch + rate lim
 python scripts/manual/test_telegram.py                # ping Telegram
 python scripts/manual/test_claude.py                  # grade setup sintetis
 python scripts/manual/scan_pair.py EUR/USD H4 --grade # debug 1 pair
+python scripts/manual/scan_pair.py EUR/USD H4 --grade --png out.png  # simpan chart
 python scripts/manual/scan_pair.py EUR/USD H4 --csv data/eurusd.csv  # offline
 ```
 
