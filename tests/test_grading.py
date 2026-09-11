@@ -68,12 +68,15 @@ def test_sl_relative_to_entry_all_candidates():
 def test_asset_class_params_and_symbols():
     from config.pairs import asset_class, price_decimals, round_step, market_247, tv_exchange, SCAN_SYMBOLS
     from config import settings
-    assert "XAU/USD" in SCAN_SYMBOLS and "BTC/USD" in SCAN_SYMBOLS and len(SCAN_SYMBOLS) == 30
+    assert {"XAU/USD", "BTC/USD", "ETH/USD"} <= set(SCAN_SYMBOLS) and "XAG/USD" not in SCAN_SYMBOLS and len(SCAN_SYMBOLS) == 31
     assert asset_class("BTC/USD") == "crypto" and asset_class("XAU/USD") == "metal" and asset_class("EUR/USD") == "forex"
     assert price_decimals("BTC/USD") == 1 and price_decimals("XAU/USD") == 2 and price_decimals("USD/JPY") == 3
     assert round_step("BTC/USD") == 1000 and round_step("XAU/USD") == 50 and round_step("EUR/USD") == 0.01
     assert market_247("BTC/USD") and not market_247("XAU/USD") and not market_247("EUR/USD")
     assert tv_exchange("BTC/USD") == "BITSTAMP" and tv_exchange("XAU/USD") == "OANDA"
+    assert asset_class("ETH/USD") == "crypto" and price_decimals("ETH/USD") == 2 and round_step("ETH/USD") == 100
+    assert asset_class("XAG/USD") == "metal" and price_decimals("XAG/USD") == 3 and round_step("XAG/USD") == 1.0
+    assert market_247("ETH/USD") and not market_247("XAG/USD")
     assert settings.asset_params("BTC/USD")["sl_min_pct"] == 0.015
 
 

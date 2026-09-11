@@ -23,22 +23,25 @@ MAJOR_PAIRS = [
 
 # Non-forex yang ikut di-scan. Asset class menentukan desimal, lebar PRZ,
 # buffer SL, round number, jam pasar, dan exchange TradingView.
-EXTRA_SYMBOLS = ["XAU/USD", "BTC/USD"]
+# Metadata per simbol non-forex: asset class, desimal harga, jarak round number.
+SYMBOL_META = {
+    "XAU/USD": {"class": "metal",  "decimals": 2, "round": 50.0},
+    # XAG/USD butuh Twelve Data plan Grow (berbayar) — nonaktif di free tier.
+    "XAG/USD": {"class": "metal",  "decimals": 3, "round": 1.0, "enabled": False},
+    "BTC/USD": {"class": "crypto", "decimals": 1, "round": 1000.0},
+    "ETH/USD": {"class": "crypto", "decimals": 2, "round": 100.0},
+}
+EXTRA_SYMBOLS = [s for s, m in SYMBOL_META.items() if m.get("enabled", True)]
 SCAN_SYMBOLS = MAJOR_PAIRS + EXTRA_SYMBOLS
-
-ASSET_CLASS = {"XAU/USD": "metal", "BTC/USD": "crypto"}
 
 
 def asset_class(pair: str) -> str:
-    return ASSET_CLASS.get(pair, "forex")
+    return SYMBOL_META.get(pair, {}).get("class", "forex")
 
 
 def price_decimals(pair: str) -> int:
-    ac = asset_class(pair)
-    if ac == "crypto":
-        return 1
-    if ac == "metal":
-        return 2
+    if pair in SYMBOL_META:
+        return SYMBOL_META[pair]["decimals"]
     return 3 if pair.endswith("JPY") else 5
 
 
@@ -48,11 +51,8 @@ def pip_size(pair: str) -> float:
 
 def round_step(pair: str) -> float:
     """Jarak round number psikologis untuk confluence structural."""
-    ac = asset_class(pair)
-    if ac == "crypto":
-        return 1000.0
-    if ac == "metal":
-        return 50.0
+    if pair in SYMBOL_META:
+        return SYMBOL_META[pair]["round"]
     return 1.0 if pair.endswith("JPY") else 0.01
 
 
