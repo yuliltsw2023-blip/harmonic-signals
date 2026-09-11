@@ -22,10 +22,17 @@ def entry_price(cand: dict) -> float:
 
 
 def calculate_sl(cand: dict) -> float:
+    """SL beyond X (Carney). Untuk pattern dengan D beyond X (Butterfly, Crab,
+    Deep Crab) PRZ-nya sudah melewati X, jadi SL harus beyond tepi PRZ terjauh,
+    bukan X — kalau tidak SL malah berada di dalam zona entry."""
     p = cand["points"]
     X, A = p["X"]["price"], p["A"]["price"]
+    prz = cand["prz"]
     buffer = abs(A - X) * settings.SL_BUFFER_XA
-    sl = X - buffer if cand["direction"] == "bull" else X + buffer
+    if cand["direction"] == "bull":
+        sl = min(X, prz["low"]) - buffer
+    else:
+        sl = max(X, prz["high"]) + buffer
     cand["sl"] = sl
     return sl
 
