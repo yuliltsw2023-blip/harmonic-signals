@@ -22,7 +22,8 @@ Twelve Data (OHLC, 200 bar)
                          pre-grade (filter murah), HTF alignment, rule grade
    └─ lib/state.py       dedup Upstash (fallback in-memory)
    └─ lib/claude_grader.py  Claude → JSON {grade, reasoning, entry_model,...}
-   └─ lib/chart.py       PNG candlestick + XABCD + PRZ + SL/TP (matplotlib)
+   └─ lib/chart_img.py   chart TradingView asli via chart-img.com (kalau CHART_IMG_API_KEY ada)
+   └─ lib/chart.py       fallback PNG matplotlib: candlestick + XABCD + PRZ + SL/TP
    └─ lib/telegram.py    sendPhoto (chart + caption) lalu sendMessage detail MDB-style
 lib/scanner.py = orchestrator; scripts/scan_h4.py & scan_d1.py = entry point.
 ```
@@ -61,7 +62,8 @@ DRY_RUN=true GRADER=rule python scripts/scan_h4.py
 1. Push repo ini ke GitHub (private).
 2. Settings → Secrets and variables → Actions → **Secrets**:
    `TWELVEDATA_API_KEY`, `ANTHROPIC_API_KEY`, `TELEGRAM_BOT_TOKEN`,
-   `TELEGRAM_CHAT_ID`, `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`.
+   `TELEGRAM_CHAT_ID`, `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`,
+   opsional `CHART_IMG_API_KEY` (chart-img.com, chart TradingView asli).
 3. Tab **Variables**: `DRY_RUN=true` (1 minggu pertama), opsional
    `CLAUDE_MODEL` (default `claude-sonnet-5`).
 4. Tab Actions → enable workflow → jalankan manual via *Run workflow* untuk

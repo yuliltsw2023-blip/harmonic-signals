@@ -65,3 +65,33 @@ def test_send_signal_sends_photo_then_text(monkeypatch):
     calls.clear()
     telegram.send_signal(c, grade)
     assert [k for k, _ in calls] == ["text"]
+
+
+def test_chart_img_request_shape_and_fallback(monkeypatch):
+    from lib import chart_img, telegram
+    c = analyze_candles("EUR/USD", "H4", synthetic_bat())[0]
+    grade = {"grade": "A", "entry_model": "Scaled", "reasoning": [], "source": "rule"}
+    body = chart_img.build_request(c, grade)
+    assert body["symbol"] == "OANDA:EURUSD" and body["interval"] == "4h"
+    names = [d["name"] for d in body["drawings"]]
+    assert names.count("Trend Line") == 4 and "Rectangle" in names and names.count("Horizontal Line") == 5
+    assert all(d["input"].get("startDatetime", "Z").endswith("Z") for d in body["drawings"] if d["name"] == "Trend Line")
+
+    # key ada tapi API error → fallback matplotlib, sinyal tetap terkirim
+    monkeypatch.setenv("CHART_IMG_API_KEY", "dummy")
+    class R:
+        status_code = 500; text = "boom"; headers = {"content-type": "text/plain"}; content = b""
+    monkeypatch.setattr(chart_img.requests, "post", lambda *a, **k: R())
+    calls = []
+    monkeypatch.setattr(telegram, "send_photo", lambda png, cap: calls.append(("photo", png[:4])))
+    monkeypatch.setattr(telegram, "send_message", lambda text: calls.append(("text", None)))
+    telegram.send_signal(c, grade, synthetic_bat())
+    assert calls[0][0] == "photo" and calls[0][1] == b"\x89PNG" and c["chart_source"] == "matplotlib"
+
+    # key ada dan API sukses → pakai chart-img
+    class OK:
+        status_code = 200; headers = {"content-type": "image/png"}; content = b"\x89PNGfake"; text = ""
+    monkeypatch.setattr(chart_img.requests, "post", lambda *a, **k: OK())
+    calls.clear()
+    telegram.send_signal(c, grade, synthetic_bat())
+    assert calls[0] == ("photo", b"\x89PNG") and c["chart_source"].startswith("chart-img")

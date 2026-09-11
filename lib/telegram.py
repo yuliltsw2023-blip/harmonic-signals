@@ -128,10 +128,24 @@ def send_message(text: str, parse_mode: str = "HTML") -> dict:
 
 def send_signal(cand: dict, grade: dict, candles: list[dict] | None = None) -> dict:
     """Foto chart (kalau candles tersedia & render sukses) lalu pesan detail."""
-    if candles:
+    png = None
+    if os.environ.get("CHART_IMG_API_KEY", "").strip():
+        try:
+            from lib.chart_img import render_chart_img
+            png = render_chart_img(cand, grade)
+            cand["chart_source"] = "chart-img (TradingView)"
+        except Exception as e:  # noqa: BLE001
+            print(f"[warn] chart-img gagal ({type(e).__name__}: {e}), fallback matplotlib")
+    if png is None and candles:
         try:
             from lib.chart import render_signal_chart
-            send_photo(render_signal_chart(cand, candles, grade), format_caption(cand, grade))
+            png = render_signal_chart(cand, candles, grade)
+            cand["chart_source"] = "matplotlib"
         except Exception as e:  # noqa: BLE001 — chart gagal jangan sampai batalin sinyal
             print(f"[warn] chart gagal ({type(e).__name__}: {e}), kirim teks saja")
+    if png:
+        try:
+            send_photo(png, format_caption(cand, grade))
+        except Exception as e:  # noqa: BLE001
+            print(f"[warn] sendPhoto gagal ({type(e).__name__}: {e}), kirim teks saja")
     return send_message(format_signal(cand, grade))

@@ -10,7 +10,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import _bootstrap_manual  # noqa: F401,E402
 
 KEYS = ["TWELVEDATA_API_KEY", "ANTHROPIC_API_KEY", "TELEGRAM_BOT_TOKEN",
-        "TELEGRAM_CHAT_ID", "UPSTASH_REDIS_REST_URL", "UPSTASH_REDIS_REST_TOKEN"]
+        "TELEGRAM_CHAT_ID", "UPSTASH_REDIS_REST_URL", "UPSTASH_REDIS_REST_TOKEN", "CHART_IMG_API_KEY"]
 
 print(f"{'SECRET':26} {'len':>4} {'strip':>5}  fp")
 for k in KEYS:
