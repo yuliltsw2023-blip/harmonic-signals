@@ -9,7 +9,7 @@ import traceback
 from datetime import datetime, timezone
 
 from config import settings
-from config.pairs import SCAN_SYMBOLS, market_247
+from config.pairs import market_247, symbols_for
 from lib.claude_grader import grade_setup
 from lib.grading import enrich_levels, htf_alignment, htf_trend, pre_grade, rule_grade
 from lib.harmonics import build_candidate, extract_xabcd, match_pattern
@@ -19,7 +19,7 @@ from lib.state import backend_name, is_already_signaled, mark_signaled
 from lib.telegram import send_signal
 from lib.twelvedata import TwelveDataClient
 
-INTERVAL_OF = {"H4": "4h", "D1": "1day"}
+INTERVAL_OF = {"H1": "1h", "H4": "4h", "D1": "1day"}
 
 
 def is_forex_closed(now: datetime | None = None) -> bool:
@@ -59,7 +59,7 @@ def _utf8_console() -> None:
 
 def run_scan(timeframe: str, pairs: list[str] | None = None, dry_run: bool | None = None) -> int:
     _utf8_console()
-    pairs = pairs or SCAN_SYMBOLS
+    pairs = pairs or symbols_for(timeframe)
     if is_forex_closed():
         skipped = [p for p in pairs if not market_247(p)]
         pairs = [p for p in pairs if market_247(p)]

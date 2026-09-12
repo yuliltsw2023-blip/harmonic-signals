@@ -31,8 +31,17 @@ SYMBOL_META = {
     "BTC/USD": {"class": "crypto", "decimals": 1, "round": 1000.0},
     "ETH/USD": {"class": "crypto", "decimals": 2, "round": 100.0},
 }
+# Universe H1 (day trade): hanya simbol paling likuid, supaya jatah menit
+# GitHub Actions (2000/bulan repo private) & Twelve Data cukup. Crypto sengaja
+# TIDAK di-scan H1 (skill: crypto minimal H4, terlalu banyak wick likuidasi).
+H1_SYMBOLS = ["EUR/USD", "GBP/USD", "USD/JPY", "GBP/JPY", "EUR/JPY", "GBP/AUD", "XAU/USD"]
+
 EXTRA_SYMBOLS = [s for s, m in SYMBOL_META.items() if m.get("enabled", True)]
 SCAN_SYMBOLS = MAJOR_PAIRS + EXTRA_SYMBOLS
+
+
+def symbols_for(timeframe: str) -> list[str]:
+    return list(H1_SYMBOLS) if timeframe == "H1" else list(SCAN_SYMBOLS)
 
 
 def asset_class(pair: str) -> str:

@@ -52,6 +52,10 @@ Cross-asset: crypto (BTC) - SL buffer lebih lebar (>=1.5% beyond X), hindari
 entry weekend (volume tipis), PRZ boleh sampai 1%. Metal (XAU) - sensitif
 FOMC/CPI/geopolitik, round number kelipatan 50 kuat. Forex - session London/NY.
 
+Timeframe H1 = day trade: session filter lebih penting (London/NY overlap),
+hindari Asia session kecuali pair JPY/AUD, dan noise lebih tinggi -> lebih
+konservatif saat ragu.
+
 Pilih entry_model: Scaled kalau PRZ lebar (>0.2%) atau setup high conviction;
 Conservative kalau HTF netral/counter atau pattern Butterfly/Cypher;
 Aggressive hanya Grade A dengan HTF aligned.

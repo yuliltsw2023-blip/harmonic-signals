@@ -81,3 +81,21 @@ def test_weekend_still_scans_crypto(monkeypatch, capsys):
     assert rc == 0
     assert "1 pair dilewati, 1 pair 24/7 tetap di-scan" in out
     assert '"pairs_scanned": 1' in out
+
+
+def test_h1_uses_limited_universe_and_h4_htf(monkeypatch):
+    from config.pairs import symbols_for, H1_SYMBOLS
+    from config import settings
+    assert symbols_for("H1") == H1_SYMBOLS and len(H1_SYMBOLS) == 7
+    assert not any(s in ("BTC/USD", "ETH/USD") for s in H1_SYMBOLS)
+    assert len(symbols_for("H4")) == 31
+    assert settings.HTF_OF["H1"] == "4h" and scanner.INTERVAL_OF["H1"] == "1h"
+    _setup(monkeypatch)
+    seen = []
+    class Rec(FakeTD):
+        def get_candles(self, symbol, interval, outputsize=200, retries=2):
+            seen.append((symbol, interval)); return super().get_candles(symbol, interval, outputsize, retries)
+    monkeypatch.setattr(scanner, "TwelveDataClient", Rec)
+    assert scanner.run_scan("H1", dry_run=True) == 0
+    assert {s for s, _ in seen} == set(H1_SYMBOLS)
+    assert all(i in ("1h", "4h") for _, i in seen)

@@ -55,7 +55,7 @@ CLAUDE_MAX_TOKENS = 4096
 # --- HTF ---------------------------------------------------------------------
 # Timeframe HTF untuk alignment check, di-fetch lazy (hanya pair yang punya
 # kandidat lolos pre-grade) supaya hemat budget Twelve Data.
-HTF_OF = {"H4": "1day", "D1": "1week"}
+HTF_OF = {"H1": "4h", "H4": "1day", "D1": "1week"}
 HTF_OUTPUTSIZE = 120
 
 

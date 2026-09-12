@@ -1,7 +1,7 @@
 # harmonic-signals
 
 Scanner harmonic pattern (Bat, Gartley, Crab, Deep Crab, Butterfly, Cypher)
-untuk 28 pair forex + XAU, BTC, ETH (vs USD) di H4 + D1. XAG/USD sudah
+untuk 28 pair forex + XAU, BTC, ETH (vs USD) di H4 + D1, plus H1 untuk 7 simbol paling likuid. XAG/USD sudah
 dikonfigurasi tapi nonaktif: Twelve Data free tier tidak menyediakannya (butuh plan Grow). Deteksi mekanis di Python, grading oleh Claude
 memakai rubric skill `harmonic-pattern-trading`, kirim ke Telegram, dedup di
 Upstash Redis, jalan di GitHub Actions cron. Total biaya ≈ Claude API saja.
@@ -74,17 +74,20 @@ DRY_RUN=true GRADER=rule python scripts/scan_h4.py
    cek log.
 5. Setelah seminggu bersih, ubah `DRY_RUN=false`.
 
-Cron: H4 tiap `00:05, 04:05, …, 20:05 UTC`; D1 `00:10 UTC`. Scan otomatis
+Cron: H1 tiap jam `:20 UTC` (7 simbol, `config/pairs.py` H1_SYMBOLS, tanpa crypto); H4 tiap `00:05, 04:05, …, 20:05 UTC`; D1 `00:10 UTC`. Scan otomatis
 skip Sabtu, Minggu <22:00 UTC, dan Jumat ≥22:00 UTC.
 
 ## Budget Twelve Data (free 800/hari)
 
 | Scan | Request/hari |
 |------|--------------|
+| H1 × 24 × 7 simbol | 168 |
 | H4 × 6 × 31 simbol | 186 |
 | D1 × 1 × 31 simbol | 31 |
 | HTF (lazy, hanya pair yang lolos pre-grade) | biasanya 0–10 |
-| **Total** | **≈ 220–235** |
+| **Total** | **≈ 390–405** |
+
+Jatah menit GitHub Actions (repo private, 2000/bulan) adalah batas yang lebih ketat: tiap request Twelve Data ≈ 8 detik, jadi ≈ 1.750 menit/bulan dengan H1 7 simbol. Kalau mau H1 untuk semua simbol: jadikan repo public (menit unlimited) atau upgrade Twelve Data (rate limit lebih longgar).
 
 ## Tuning
 

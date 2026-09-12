@@ -1,0 +1,47 @@
+name: Scan H1 Harmonic Patterns
+
+on:
+  schedule:
+    # Tiap jam, menit ke-20 (H4 jalan di :05 dan D1 di :10 — jangan tabrakan,
+    # rate limit Twelve Data 8 req/menit dibagi per API key).
+    - cron: "20 * * * *"
+  workflow_dispatch:
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    env:
+      TWELVEDATA_API_KEY: ${{ secrets.TWELVEDATA_API_KEY }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      CLAUDE_MODEL: ${{ vars.CLAUDE_MODEL || 'claude-sonnet-5' }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      UPSTASH_REDIS_REST_URL: ${{ secrets.UPSTASH_REDIS_REST_URL }}
+      UPSTASH_REDIS_REST_TOKEN: ${{ secrets.UPSTASH_REDIS_REST_TOKEN }}
+      CHART_IMG_API_KEY: ${{ secrets.CHART_IMG_API_KEY }}
+      CHART_IMG_LAYOUT_ID: ${{ vars.CHART_IMG_LAYOUT_ID }}
+      LOG_LEVEL: info
+      DRY_RUN: ${{ vars.DRY_RUN || 'false' }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Cek secret (panjang + fingerprint)
+        run: python scripts/manual/check_secrets.py
+
+      - name: Run H1 scan
+        run: python scripts/scan_h1.py
