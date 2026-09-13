@@ -94,6 +94,72 @@ def format_caption(cand: dict, grade: dict) -> str:
     ])
 
 
+# ---------------------------------------------------------------------------
+# POC Pullback (strategi kedua) — teks saja, tanpa chart
+# ---------------------------------------------------------------------------
+
+STAGE_EMOJI = {"approaching": "👀", "in_va": "🎯", "reacted": "✅"}
+
+
+def format_poc_signal(cand: dict) -> str:
+    d = price_decimals(cand["pair"])
+    f = lambda x: f"{x:.{d}f}"
+    esc = html.escape
+    g = cand.get("grade", {})
+    up = cand["direction"] == "bull"
+    side = "LONG 🟢 (buy di pullback)" if up else "SHORT 🔴 (sell di pullback)"
+    st = cand["structure"]
+    leg = cand["leg"]
+    prof = cand["profile"]
+    prof_src = "volume" if prof["source"] == "volume" else "TPO/time-at-price (tanpa volume)"
+    emoji = STAGE_EMOJI.get(cand["stage"], "•")
+    lines = [
+        f"<b>{esc(cand['pair'])} — POC PULLBACK {'BUY' if up else 'SELL'} on {cand['timeframe']}</b>",
+        f"Arah: <b>{side}</b>",
+        f"{emoji} Stage: <b>{esc(cand['stage_label'])}</b>",
+        f"Grade: <b>{g.get('grade', '-')}</b>  ·  HTF {esc(cand.get('htf_timeframe', '-'))}: {esc(cand.get('htf_alignment', 'neutral'))}",
+        "",
+        "<b>Struktur</b>",
+        f"  Swing H: {f(st['prev_h'])} → {f(st['last_h'])}  ({'HH' if st['last_h'] > st['prev_h'] else 'LH'})",
+        f"  Swing L: {f(st['prev_l'])} → {f(st['last_l'])}  ({'HL' if st['last_l'] > st['prev_l'] else 'LL'})",
+        f"  Bias: {'BULLISH' if up else 'BEARISH'}",
+        f"  Leg impulsif: {f(leg['start_price'])} ({leg['start_datetime'][:10]}) → {f(leg['end_price'])} ({leg['end_datetime'][:10]}), {leg['bars']} candle",
+        "",
+        f"<b>Volume Profile</b> (fixed range, {prof['bins']} bin, {esc(prof_src)})",
+        f"  VAH: {f(cand['vah'])}",
+        f"  POC: <b>{f(cand['poc'])}</b>  (kedalaman {cand['depth']:.2f} = {esc(cand['depth_label'])})",
+        f"  VAL: {f(cand['val'])}",
+        "",
+        f"<b>Harga</b> {f(cand['current_price'])} · jarak ke tepi VA {cand['distance_pct']:.2%}",
+        "  Reaksi: " + (esc(", ".join(cand["reactions"])) if cand["reactions"] else "belum ada — tunggu candle close di dalam VA"),
+        "",
+        "<b>Rencana</b> (entry limit di POC)",
+        f"  SL konservatif {f(cand['sl'])} ({'di bawah swing low' if up else 'di atas swing high'} + buffer)",
+        f"  SL agresif {f(cand['sl_aggressive'])} ({'di bawah VAL' if up else 'di atas VAH'}, hanya kalau reaksi jelas)",
+        f"  TP1 {f(cand['tps']['tp1'])} (swing {'high' if up else 'low'} leg) — R:R {cand['rr']['tp1']:.1f}:1 (SL swing) · {cand['rr_aggressive']['tp1']:.1f}:1 (SL VA)",
+        f"  TP2 {f(cand['tps']['tp2'])} (1.272 ext) — R:R {cand['rr']['tp2']:.1f}:1 · {cand['rr_aggressive']['tp2']:.1f}:1",
+        f"  TP3 {f(cand['tps']['tp3'])} (1.618 ext) — R:R {cand['rr']['tp3']:.1f}:1 · {cand['rr_aggressive']['tp3']:.1f}:1",
+        "",
+        "<b>Reasoning</b>",
+    ]
+    for r in g.get("reasoning", []):
+        lines.append(f"  • {esc(r)}")
+    lines += [
+        "",
+        f"<b>Invalidation</b>: close {'di bawah' if up else 'di atas'} {f(leg['start_price'])} (struktur patah). "
+        f"Melemah kalau close {'di bawah VAL' if up else 'di atas VAH'}.",
+        "Cek manual: news ≤2 jam / earnings / ex-date, dan candle reaksi sebelum klik.",
+        "",
+        f"<i>{esc(DISCLAIMER)}</i>",
+        f"<i>screener: poc-pullback (rule) · harga {f(cand['current_price'])} @ {cand['current_datetime']}</i>",
+    ]
+    return "\n".join(lines)
+
+
+def send_poc_signal(cand: dict) -> dict:
+    return send_message(format_poc_signal(cand))
+
+
 def _creds() -> tuple[str, str]:
     return os.environ["TELEGRAM_BOT_TOKEN"].strip(), os.environ["TELEGRAM_CHAT_ID"].strip()
 

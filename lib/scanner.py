@@ -9,15 +9,17 @@ import traceback
 from datetime import datetime, timezone
 
 from config import settings
-from config.pairs import market_247, symbols_for
+from config.pairs import data_source, market_247, symbols_for
 from lib.claude_grader import grade_setup
 from lib.grading import enrich_levels, htf_alignment, htf_trend, pre_grade, rule_grade
 from lib.harmonics import build_candidate, extract_xabcd, match_pattern
 from lib.pivots import swing_pivots
+from lib.poc import analyze_poc, poc_alignment, rule_grade_poc
 from lib.prz import construct_prz
 from lib.state import backend_name, is_already_signaled, mark_signaled
-from lib.telegram import send_signal
+from lib.telegram import send_poc_signal, send_signal
 from lib.twelvedata import TwelveDataClient
+from lib.yahoo import YahooClient
 
 INTERVAL_OF = {"H1": "1h", "H4": "4h", "D1": "1day"}
 
@@ -74,14 +76,23 @@ def run_scan(timeframe: str, pairs: list[str] | None = None, dry_run: bool | Non
     print(f"[start] {timeframe} scan · {len(pairs)} pair · DRY_RUN={dry_run} · "
           f"state={backend_name()} · model={settings.CLAUDE_MODEL}")
 
-    tdc = TwelveDataClient(api_key=settings.env("TWELVEDATA_API_KEY"))
+    # Client dibuat lazy: scan saham (Yahoo) tidak butuh key Twelve Data.
+    clients: dict[str, object] = {}
+
+    def client_for(pair: str):
+        src = data_source(pair)
+        if src not in clients:
+            clients[src] = YahooClient() if src == "yahoo" else TwelveDataClient(api_key=settings.env("TWELVEDATA_API_KEY"))
+        return clients[src]
 
     stats = {k: 0 for k in ("pairs_scanned", "structures_matched", "skipped_pregrade",
-                            "skipped_duplicate", "grade_c", "signals_sent")}
+                            "skipped_duplicate", "grade_c", "signals_sent",
+                            "poc_candidates", "poc_skipped", "poc_sent")}
     errors: list[dict] = []
 
     for pair in pairs:
         try:
+            tdc = client_for(pair)
             candles = tdc.get_candles(pair, interval, outputsize=200)
             stats["pairs_scanned"] += 1
             if len(candles) < 50:
@@ -91,6 +102,16 @@ def run_scan(timeframe: str, pairs: list[str] | None = None, dry_run: bool | Non
             cands = analyze_candles(pair, timeframe, candles)
             stats["structures_matched"] += len(cands)
             htf_candles = None
+
+            def get_htf():
+                nonlocal htf_candles
+                if htf_candles is None:
+                    try:
+                        htf_candles = tdc.get_candles(pair, htf_interval, outputsize=settings.HTF_OUTPUTSIZE)
+                    except Exception as e:  # noqa: BLE001
+                        print(f"[warn] {pair}: HTF fetch gagal ({e}), alignment=neutral")
+                        htf_candles = []
+                return htf_candles
 
             for cand in cands:
                 tag = f"{pair} {cand['pattern']} {cand['direction']} ({'proj' if cand['d_projected'] else 'done'})"
@@ -104,13 +125,7 @@ def run_scan(timeframe: str, pairs: list[str] | None = None, dry_run: bool | Non
                     continue
 
                 # HTF lazy fetch — hanya untuk kandidat yang lolos pre-grade
-                if htf_candles is None:
-                    try:
-                        htf_candles = tdc.get_candles(pair, htf_interval, outputsize=settings.HTF_OUTPUTSIZE)
-                    except Exception as e:  # noqa: BLE001
-                        print(f"[warn] {pair}: HTF fetch gagal ({e}), alignment=neutral")
-                        htf_candles = []
-                trend = htf_trend(htf_candles) if htf_candles else "neutral"
+                trend = htf_trend(get_htf()) if get_htf() else "neutral"
                 cand["htf_timeframe"] = htf_interval
                 cand["htf_trend"] = trend
                 cand["htf_alignment"] = htf_alignment(cand, trend)
@@ -130,6 +145,36 @@ def run_scan(timeframe: str, pairs: list[str] | None = None, dry_run: bool | Non
                     print(f"[sent] {tag} Grade {grade['grade']}")
                 stats["signals_sent"] += 1
 
+            # --- Strategi kedua: POC pullback (candle yang sama, 0 request tambahan)
+            if settings.POC_ENABLED:
+                poc = analyze_poc(pair, timeframe, candles)
+                if poc is not None:
+                    ptag = f"{pair} POC {poc['direction']} [{poc['stage']}]"
+                    if poc["pre_grade"] == "FAIL":
+                        stats["poc_skipped"] += 1
+                        print(f"[poc-skip] {ptag}: {poc['pre_grade_reason']}")
+                    elif is_already_signaled(poc):
+                        stats["skipped_duplicate"] += 1
+                        print(f"[dup] {ptag}")
+                    else:
+                        stats["poc_candidates"] += 1
+                        trend = htf_trend(get_htf()) if get_htf() else "neutral"
+                        poc["htf_timeframe"] = htf_interval
+                        poc["htf_trend"] = trend
+                        poc["htf_alignment"] = poc_alignment(poc, trend)
+                        g = rule_grade_poc(poc)
+                        print(f"[poc-grade] {ptag}: {g['grade']} {g['factors']}")
+                        if g["grade"] == "C":
+                            stats["grade_c"] += 1
+                        elif dry_run:
+                            print(f"[dry_run] Would send: {ptag} Grade {g['grade']}")
+                            stats["poc_sent"] += 1
+                        else:
+                            send_poc_signal(poc)
+                            mark_signaled(poc)
+                            print(f"[sent] {ptag} Grade {g['grade']}")
+                            stats["poc_sent"] += 1
+
         except Exception as e:  # noqa: BLE001
             errors.append({"pair": pair, "error": str(e), "traceback": traceback.format_exc()})
             print(f"[error] {pair}: {e}", file=sys.stderr)
@@ -139,7 +184,8 @@ def run_scan(timeframe: str, pairs: list[str] | None = None, dry_run: bool | Non
         "timeframe": timeframe,
         "dry_run": dry_run,
         **stats,
-        "twelvedata_requests": tdc.request_count,
+        "twelvedata_requests": getattr(clients.get("twelvedata"), "request_count", 0),
+        "yahoo_requests": getattr(clients.get("yahoo"), "request_count", 0),
         "errors_count": len(errors),
         "errors": [{"pair": e["pair"], "error": e["error"]} for e in errors[:5]],
     }

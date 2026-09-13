@@ -39,9 +39,42 @@ H1_SYMBOLS = ["EUR/USD", "GBP/USD", "USD/JPY", "GBP/JPY", "EUR/JPY", "GBP/AUD", 
 EXTRA_SYMBOLS = [s for s, m in SYMBOL_META.items() if m.get("enabled", True)]
 SCAN_SYMBOLS = MAJOR_PAIRS + EXTRA_SYMBOLS
 
+# --- Saham (sumber data Yahoo Finance, D1 saja) -----------------------------
+# Format simbol = format Yahoo: US tanpa suffix, IDX pakai ".JK".
+# Skill: universe US minimal S&P 500, IDX minimal LQ45 (small cap = profile bisa
+# dibentuk 1-2 broker). Tambah/kurangi di sini; tiap simbol = 1 request/hari.
+STOCK_US_SYMBOLS = [
+    "AAPL", "MSFT", "NVDA", "AMZN", "GOOGL", "META", "TSLA", "AVGO",
+    "JPM", "V", "XOM", "UNH", "COST", "NFLX", "AMD",
+]
+STOCK_IDX_SYMBOLS = [
+    "BBCA.JK", "BBRI.JK", "BMRI.JK", "BBNI.JK", "TLKM.JK", "ASII.JK", "UNTR.JK",
+    "ANTM.JK", "ADRO.JK", "PTBA.JK", "ICBP.JK", "INDF.JK", "KLBF.JK", "AMRT.JK",
+    "CPIN.JK", "MDKA.JK", "BRPT.JK", "EXCL.JK", "PGAS.JK", "SMGR.JK",
+]
+for _s in STOCK_US_SYMBOLS:
+    SYMBOL_META[_s] = {"class": "stock_us", "decimals": 2, "round": 5.0}
+for _s in STOCK_IDX_SYMBOLS:
+    SYMBOL_META[_s] = {"class": "stock_idx", "decimals": 0, "round": 100.0}
+
 
 def symbols_for(timeframe: str) -> list[str]:
-    return list(H1_SYMBOLS) if timeframe == "H1" else list(SCAN_SYMBOLS)
+    if timeframe == "H1":
+        return list(H1_SYMBOLS)
+    if timeframe == "STOCK_US":
+        return list(STOCK_US_SYMBOLS)
+    if timeframe == "STOCK_IDX":
+        return list(STOCK_IDX_SYMBOLS)
+    return list(SCAN_SYMBOLS)
+
+
+def data_source(pair: str) -> str:
+    """'yahoo' untuk saham, 'twelvedata' untuk forex/metal/crypto."""
+    return "yahoo" if asset_class(pair).startswith("stock") else "twelvedata"
+
+
+def is_stock(pair: str) -> bool:
+    return asset_class(pair).startswith("stock")
 
 
 def asset_class(pair: str) -> str:
@@ -71,4 +104,12 @@ def market_247(pair: str) -> bool:
 
 
 def tv_exchange(pair: str) -> str:
-    return "BITSTAMP" if asset_class(pair) == "crypto" else "OANDA"
+    cls = asset_class(pair)
+    if cls == "crypto":
+        return "BITSTAMP"
+    if cls == "stock_us":
+        return "NASDAQ"
+    if cls == "stock_idx":
+        return "IDX"
+    return "OANDA"
+

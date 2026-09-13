@@ -1,0 +1,53 @@
+name: Scan Stocks D1 (Harmonic + POC Pullback)
+
+on:
+  schedule:
+    # UTC, Senin–Jumat. Data Yahoo Finance (tanpa key).
+    - cron: "15 9 * * 1-5"    # 16:15 WIB — setelah tutup IDX → market=idx (auto)
+    - cron: "15 21 * * 1-5"   # 17:15 ET — setelah tutup NYSE/NASDAQ → market=us (auto)
+  workflow_dispatch:
+    inputs:
+      market:
+        description: "us | idx | auto"
+        default: "auto"
+        required: false
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    env:
+      TWELVEDATA_API_KEY: ${{ secrets.TWELVEDATA_API_KEY }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      CLAUDE_MODEL: ${{ vars.CLAUDE_MODEL || 'claude-sonnet-5' }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      UPSTASH_REDIS_REST_URL: ${{ secrets.UPSTASH_REDIS_REST_URL }}
+      UPSTASH_REDIS_REST_TOKEN: ${{ secrets.UPSTASH_REDIS_REST_TOKEN }}
+      CHART_IMG_API_KEY: ${{ secrets.CHART_IMG_API_KEY }}
+      CHART_IMG_LAYOUT_ID: ${{ vars.CHART_IMG_LAYOUT_ID }}
+      POC_ENABLED: ${{ vars.POC_ENABLED || 'true' }}
+      LOG_LEVEL: info
+      DRY_RUN: ${{ vars.DRY_RUN || 'false' }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Cek secret (panjang + fingerprint)
+        run: python scripts/manual/check_secrets.py
+
+      - name: Run stocks D1 scan
+        run: python scripts/scan_stocks.py ${{ github.event.inputs.market || 'auto' }}

@@ -29,7 +29,15 @@ def signal_key(pair: str, timeframe: str, pattern: str, d_date: str) -> str:
     return f"signal:{safe_pair}:{timeframe}:{safe_pattern}:{d_date}"
 
 
+def poc_key(pair: str, timeframe: str, leg_date: str, stage: str) -> str:
+    """Dedup POC: satu pesan per leg impulsif per stage (approaching / in_va /
+    reacted). Leg baru (HH baru) = key baru."""
+    return f"poc:{pair.replace('/', '_')}:{timeframe}:{leg_date}:{stage}"
+
+
 def _key(cand: dict) -> str:
+    if cand.get("kind") == "poc":
+        return poc_key(cand["pair"], cand["timeframe"], cand["leg_date"], cand["stage"])
     return signal_key(cand["pair"], cand["timeframe"], cand["pattern"], cand["d_date"])
 
 

@@ -35,9 +35,11 @@ def _parse(dt_str: str) -> datetime:
 
 
 def tv_symbol(pair: str, exchange: str | None = None) -> str:
-    from config.pairs import tv_exchange
+    from config.pairs import is_stock, tv_exchange
     exchange = exchange or tv_exchange(pair)
-    return f"{exchange}:{pair.replace('/', '')}"
+    # Saham format Yahoo: "BBCA.JK" → "IDX:BBCA"; forex "EUR/USD" → "OANDA:EURUSD"
+    base = pair.split(".")[0] if is_stock(pair) else pair.replace("/", "")
+    return f"{exchange}:{base}"
 
 
 def build_request(cand: dict, grade: dict) -> dict:
