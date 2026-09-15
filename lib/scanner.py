@@ -170,7 +170,7 @@ def run_scan(timeframe: str, pairs: list[str] | None = None, dry_run: bool | Non
                             print(f"[dry_run] Would send: {ptag} Grade {g['grade']}")
                             stats["poc_sent"] += 1
                         else:
-                            send_poc_signal(poc)
+                            send_poc_signal(poc, candles)
                             mark_signaled(poc)
                             print(f"[sent] {ptag} Grade {g['grade']}")
                             stats["poc_sent"] += 1

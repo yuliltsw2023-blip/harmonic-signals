@@ -28,6 +28,7 @@ jobs:
       CHART_IMG_API_KEY: ${{ secrets.CHART_IMG_API_KEY }}
       CHART_IMG_LAYOUT_ID: ${{ vars.CHART_IMG_LAYOUT_ID }}
       POC_ENABLED: ${{ vars.POC_ENABLED || 'true' }}
+      SIGNAL_VERBOSE: ${{ vars.SIGNAL_VERBOSE || 'false' }}
       LOG_LEVEL: info
       DRY_RUN: ${{ vars.DRY_RUN || 'false' }}
 

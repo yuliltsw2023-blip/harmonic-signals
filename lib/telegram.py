@@ -11,6 +11,16 @@ from config.pairs import price_decimals
 
 DISCLAIMER = ("⚠️ Analisis edukatif. Bukan sinyal buy/sell. Semua keputusan trading "
               "dan konsekuensinya tanggung jawab pribadi.")
+DISCLAIMER_SHORT = "⚠️ analisis edukatif, bukan sinyal buy/sell"
+
+
+def verbose() -> bool:
+    """SIGNAL_VERBOSE=true → format panjang lama (struktur, rasio, reasoning).
+    Default: ringkas — arah, grade, PRZ/zona, SL, TP1, TP2 dalam satu pesan."""
+    return os.environ.get("SIGNAL_VERBOSE", "false").strip().lower() == "true"
+
+
+STAGE_EMOJI = {"approaching": "👀", "in_va": "🎯", "reacted": "✅"}
 
 
 def side_label(cand: dict) -> str:
@@ -76,6 +86,47 @@ def format_signal(cand: dict, grade: dict) -> str:
     return "\n".join(lines)
 
 
+def format_compact(cand: dict, grade: dict) -> str:
+    """Pesan ringkas harmonic (muat sebagai caption foto, <1024 char)."""
+    d = price_decimals(cand["pair"])
+    f = lambda x: f"{x:.{d}f}"
+    prz = cand["prz"]
+    esc = html.escape
+    dirn = "BULL" if cand["direction"] == "bull" else "BEAR"
+    lines = [
+        f"<b>{esc(cand['pair'])} · {esc(cand['pattern'])} {dirn} · {cand['timeframe']}</b>",
+        f"Arah: <b>{side_label(cand)}</b> · Grade <b>{grade['grade']}</b>",
+        f"PRZ: <b>{f(prz['low'])} – {f(prz['high'])}</b>",
+        f"SL: <b>{f(cand['sl'])}</b>",
+        f"TP1: <b>{f(cand['tps']['tp1'])}</b> (R:R {cand['rr']['tp1']:.1f})",
+        f"TP2: <b>{f(cand['tps']['tp2'])}</b> (R:R {cand['rr']['tp2']:.1f})",
+        f"<i>{DISCLAIMER_SHORT} · {cand['current_datetime'][:16]} UTC</i>",
+    ]
+    return "\n".join(lines)
+
+
+def format_poc_compact(cand: dict) -> str:
+    """Pesan ringkas POC pullback: zona VA, entry POC, SL, TP1, TP2."""
+    d = price_decimals(cand["pair"])
+    f = lambda x: f"{x:.{d}f}"
+    esc = html.escape
+    up = cand["direction"] == "bull"
+    side = "LONG 🟢 (buy di pullback)" if up else "SHORT 🔴 (sell di pullback)"
+    g = cand.get("grade", {}).get("grade", "-")
+    emoji = STAGE_EMOJI.get(cand["stage"], "•")
+    lines = [
+        f"<b>{esc(cand['pair'])} · POC PULLBACK {'BUY' if up else 'SELL'} · {cand['timeframe']}</b>",
+        f"Arah: <b>{side}</b> · Grade <b>{g}</b> · {emoji} {esc(cand.get('stage_label', cand['stage']))}",
+        f"Zona: <b>{f(min(cand['val'], cand['vah']))} – {f(max(cand['val'], cand['vah']))}</b> (VAL–VAH)",
+        f"Entry: <b>{f(cand['poc'])}</b> (POC, limit)",
+        f"SL: <b>{f(cand['sl'])}</b>",
+        f"TP1: <b>{f(cand['tps']['tp1'])}</b> (R:R {cand['rr']['tp1']:.1f})",
+        f"TP2: <b>{f(cand['tps']['tp2'])}</b> (R:R {cand['rr']['tp2']:.1f})",
+        f"<i>{DISCLAIMER_SHORT} · {cand['current_datetime'][:16]} UTC</i>",
+    ]
+    return "\n".join(lines)
+
+
 def format_caption(cand: dict, grade: dict) -> str:
     """Caption foto (limit Telegram 1024 char): ringkasan level saja."""
     d = price_decimals(cand["pair"])
@@ -97,9 +148,6 @@ def format_caption(cand: dict, grade: dict) -> str:
 # ---------------------------------------------------------------------------
 # POC Pullback (strategi kedua) — teks saja, tanpa chart
 # ---------------------------------------------------------------------------
-
-STAGE_EMOJI = {"approaching": "👀", "in_va": "🎯", "reacted": "✅"}
-
 
 def format_poc_signal(cand: dict) -> str:
     d = price_decimals(cand["pair"])
@@ -156,8 +204,29 @@ def format_poc_signal(cand: dict) -> str:
     return "\n".join(lines)
 
 
-def send_poc_signal(cand: dict) -> dict:
-    return send_message(format_poc_signal(cand))
+def send_poc_signal(cand: dict, candles: list[dict] | None = None) -> dict:
+    """Satu pesan: foto chart POC (kalau candles ada) dengan caption ringkas.
+    SIGNAL_VERBOSE=true → tambah pesan teks panjang setelahnya."""
+    png = None
+    if candles:
+        try:
+            from lib.chart_poc import render_poc_chart
+            png = render_poc_chart(cand, candles)
+            cand["chart_source"] = "matplotlib"
+        except Exception as e:  # noqa: BLE001
+            print(f"[warn] chart POC gagal ({type(e).__name__}: {e}), kirim teks saja")
+    text = format_poc_compact(cand)
+    result, sent = None, False
+    if png:
+        try:
+            result = send_photo(png, text); sent = True
+        except Exception as e:  # noqa: BLE001
+            print(f"[warn] sendPhoto POC gagal ({type(e).__name__}: {e}), kirim teks saja")
+    if not sent:
+        result = send_message(text)
+    if verbose():
+        result = send_message(format_poc_signal(cand))
+    return result
 
 
 def _creds() -> tuple[str, str]:
@@ -217,9 +286,15 @@ def send_signal(cand: dict, grade: dict, candles: list[dict] | None = None) -> d
             cand["chart_source"] = "matplotlib"
         except Exception as e:  # noqa: BLE001 — chart gagal jangan sampai batalin sinyal
             print(f"[warn] chart gagal ({type(e).__name__}: {e}), kirim teks saja")
+    text = format_compact(cand, grade)
+    result, sent = None, False
     if png:
         try:
-            send_photo(png, format_caption(cand, grade))
+            result = send_photo(png, text); sent = True
         except Exception as e:  # noqa: BLE001
             print(f"[warn] sendPhoto gagal ({type(e).__name__}: {e}), kirim teks saja")
-    return send_message(format_signal(cand, grade))
+    if not sent:
+        result = send_message(text)
+    if verbose():
+        result = send_message(format_signal(cand, grade))
+    return result

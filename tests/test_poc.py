@@ -182,7 +182,7 @@ def test_scanner_sends_poc_in_dry_run(monkeypatch, capsys):
     monkeypatch.setattr(scanner, "YahooClient", FakeTD)
     monkeypatch.setattr(scanner, "is_forex_closed", lambda now=None: False)
     sent = []
-    monkeypatch.setattr(scanner, "send_poc_signal", lambda c: sent.append(c["pair"]))
+    monkeypatch.setattr(scanner, "send_poc_signal", lambda c, candles=None: sent.append(c["pair"]))
     assert scanner.run_scan("D1", pairs=["AAPL"], dry_run=True) == 0
     out = capsys.readouterr().out
     assert "[dry_run] Would send: AAPL POC bull [in_va] Grade" in out
@@ -191,3 +191,28 @@ def test_scanner_sends_poc_in_dry_run(monkeypatch, capsys):
     assert sent == ["AAPL"]
     assert scanner.run_scan("D1", pairs=["AAPL"], dry_run=False) == 0
     assert sent == ["AAPL"]  # dedup
+
+
+def test_poc_compact_and_chart(monkeypatch):
+    from lib import telegram
+    from lib.chart_poc import render_poc_chart
+    from lib.telegram import format_poc_compact
+    candles = bull_setup(pullback_to=1.1230, volume=1000.0)
+    cand = analyze_poc("AAPL", "D1", candles)
+    cand["htf_alignment"] = "neutral"; cand["htf_timeframe"] = "1week"
+    rule_grade_poc(cand)
+    msg = format_poc_compact(cand)
+    for key in ("Zona:", "Entry:", "SL:", "TP1:", "TP2:", "LONG"):
+        assert key in msg
+    assert "TP3" not in msg and "Reasoning" not in msg and len(msg) < 1024
+    png = render_poc_chart(cand, candles)
+    assert png[:8] == b"\x89PNG\r\n\x1a\n" and len(png) > 15_000
+    calls = []
+    monkeypatch.delenv("SIGNAL_VERBOSE", raising=False)
+    monkeypatch.setattr(telegram, "send_photo", lambda png, cap: calls.append(("photo", cap)))
+    monkeypatch.setattr(telegram, "send_message", lambda text: calls.append(("text", text)))
+    telegram.send_poc_signal(cand, candles)
+    assert [k for k, _ in calls] == ["photo"] and "POC PULLBACK" in calls[0][1]
+    calls.clear()
+    telegram.send_poc_signal(cand)
+    assert [k for k, _ in calls] == ["text"]

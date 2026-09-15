@@ -59,12 +59,18 @@ def test_send_signal_sends_photo_then_text(monkeypatch):
     monkeypatch.setattr(telegram, "send_message", lambda text: calls.append(("text", len(text))))
     c = analyze_candles("EUR/USD", "H4", synthetic_bat())[0]
     grade = {"grade": "B", "entry_model": "Conservative", "reasoning": ["x"], "source": "rule"}
+    monkeypatch.delenv("SIGNAL_VERBOSE", raising=False)
     telegram.send_signal(c, grade, synthetic_bat())
-    assert [k for k, _ in calls] == ["photo", "text"]
-    # tanpa candles → teks saja
+    assert [k for k, _ in calls] == ["photo"]          # ringkas: satu pesan (foto + caption)
+    # tanpa candles → teks ringkas saja
     calls.clear()
     telegram.send_signal(c, grade)
     assert [k for k, _ in calls] == ["text"]
+    # verbose → foto + teks panjang
+    calls.clear()
+    monkeypatch.setenv("SIGNAL_VERBOSE", "true")
+    telegram.send_signal(c, grade, synthetic_bat())
+    assert [k for k, _ in calls] == ["photo", "text"]
 
 
 def test_chart_img_request_shape_and_fallback(monkeypatch):
@@ -115,4 +121,15 @@ def test_layout_chart_preferred_when_layout_id_set(monkeypatch):
     telegram.send_signal(c, grade, synthetic_bat())
     assert seen[0][0].endswith("/layout-chart/abc123")
     assert seen[0][1]["symbol"] == "OANDA:GBPUSD" and seen[0][1]["interval"] == "4h"
-    assert "TradingView layout" in calls[0]
+    assert c["chart_source"].startswith("TradingView layout") and "PRZ:" in calls[0]
+
+
+def test_compact_formats_have_only_key_levels():
+    from lib.telegram import format_compact
+    c = analyze_candles("EUR/USD", "H4", synthetic_bat())[0]
+    grade = {"grade": "A", "entry_model": "Scaled", "reasoning": ["panjang"], "source": "claude"}
+    msg = format_compact(c, grade)
+    assert msg.count("\n") <= 7 and len(msg) < 1024
+    for key in ("PRZ:", "SL:", "TP1:", "TP2:", "LONG", "Grade"):
+        assert key in msg
+    assert "TP3" not in msg and "Ratios" not in msg and "Reasoning" not in msg
