@@ -1,8 +1,7 @@
 name: Scan D1 Harmonic Patterns
 
 on:
-  schedule:
-    - cron: "10 0 * * *"   # harian 00:10 UTC
+  # Cron dipindah ke scan-hourly.yml (17 Sep 2026). File ini hanya untuk Run workflow manual.
   workflow_dispatch:
 
 jobs:
@@ -21,7 +20,7 @@ jobs:
       CHART_IMG_API_KEY: ${{ secrets.CHART_IMG_API_KEY }}
       CHART_IMG_LAYOUT_ID: ${{ vars.CHART_IMG_LAYOUT_ID }}
       SIGNAL_VERBOSE: ${{ vars.SIGNAL_VERBOSE || 'false' }}
-      ENTRY_MODE: ${{ vars.ENTRY_MODE || 'in_prz' }}
+      SIGNAL_STAGES: ${{ vars.SIGNAL_STAGES || 'approaching,in_prz,left' }}
       MIN_RR_TP2: ${{ vars.MIN_RR_TP2 || '2.0' }}
       LOG_LEVEL: info
       DRY_RUN: ${{ vars.DRY_RUN || 'false' }}

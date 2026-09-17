@@ -77,7 +77,7 @@ DRY_RUN=true GRADER=rule python scripts/scan_h4.py
    cek log.
 5. Setelah seminggu bersih, ubah `DRY_RUN=false`.
 
-Cron: H1 tiap jam `:20 UTC` (7 simbol, `config/pairs.py` H1_SYMBOLS, tanpa crypto); H4 tiap `00:05, 04:05, …, 20:05 UTC`; D1 `00:10 UTC`; M15 (`scan-m15.yml`) cron nonaktif, lihat bagian "Mode entry". Scan otomatis
+Cron (sejak 17 Sep 2026): **satu job per jam** `scan-hourly.yml` di menit `:01 UTC` menjalankan H1 (7 simbol, `H1_SYMBOLS`, tanpa crypto) setiap jam, H4 (31 simbol) di jam 0/4/8/12/16/20, dan D1 di jam 00 — setup GitHub dibayar sekali per jam dan H1 jalan 1 menit setelah candle close (dulu `:20` + delay cron ≈ 45 menit). `scan-h4.yml` / `scan-d1.yml` tinggal untuk Run workflow manual; `scan-m15.yml` cron nonaktif, lihat bagian "Mode entry". Scan otomatis
 skip Sabtu, Minggu <22:00 UTC, dan Jumat ≥22:00 UTC.
 
 ## POC Pullback screener (strategi kedua)
@@ -137,15 +137,24 @@ DRY_RUN=true GRADER=rule python scripts/scan_stocks.py idx
 | **Total** | **≈ 390–405** |
 
 Jatah menit GitHub Actions (repo private, 2000/bulan) adalah batas yang lebih ketat: tiap request Twelve Data ≈ 8 detik,
-dan **GitHub membulatkan tiap job ke atas per menit** (job 70 detik = 2 menit). Perkiraan: H4 6×5 menit + D1 5 menit
-+ H1 24×2 menit ≈ 83 menit/hari ≈ 2.500 menit/bulan → jatah private habis sekitar tanggal 23–25 (workflow berhenti
-sampai bulan berikutnya). Solusi: jadikan repo public (menit unlimited, key tetap rahasia di Secrets) atau matikan H1.
+dan **GitHub membulatkan tiap job ke atas per menit** (job 70 detik = 2 menit). Dengan job hourly gabungan: 18 jam × 2 menit
+(H1 saja) + 5 jam × 6 menit (H1+H4) + 1 jam × 10 menit (H1+H4+D1) ≈ 76 menit/hari ≈ 2.300 menit/bulan (sebelum digabung
+≈ 2.500). Masih di atas jatah private → habis sekitar tanggal 25–26. Solusi: jadikan repo public (menit unlimited, key tetap
+rahasia di Secrets) atau kecilkan `H1_SYMBOLS`.
 
 ## Mode entry, R:R minimum, scalping M15
 
-- `ENTRY_MODE=in_prz` (default sejak 17 Sep 2026): sinyal dikirim **hanya kalau harga sekarang sudah di dalam PRZ**
-  (± `entry_tol`, forex 8 pip) — baik D masih proyeksi maupun D sudah terbentuk. Caption Telegram menandai
-  "di PRZ ✅ entry sekarang". `ENTRY_MODE=approach` = perilaku lama (sinyal saat harga masih ≤0.35% dari zona).
+- Sinyal harmonic **dua tahap per setup** (dedup per tahap, seperti POC), diatur `SIGNAL_STAGES` (default
+  `approaching,in_prz,left`):
+  - `approaching` 🕒 **SIAPKAN ORDER**: harga ≤ `approach` (forex 0.35%) dari tepi PRZ, belum masuk. Pesan berisi
+    "Pasang: Limit BUY/SELL @ mid PRZ" + SL/TP — user pasang pending order lalu tinggal, harga yang datang ke order.
+  - `in_prz` ✅ **MASUK ZONA**: harga sudah di PRZ (± `entry_tol`, forex 8 pip). Limit harusnya aktif; kalau belum pasang,
+    boleh entry sekarang.
+  - `left` ⚠️ **JANGAN KEJAR**: D sudah terbentuk dan harga sudah lewat PRZ menuju TP — pesan teks, hanya kalau tahap
+    sebelumnya pernah dikirim (kalau limit sudah kena: kelola SL/TP; kalau belum: lewatkan).
+  - Tahap `far` (masih jauh) dan `pierced` (menembus zona) tidak pernah dikirim. Setiap pesan mencantumkan **jam scan
+    sebenarnya** dan harga saat scan, bukan jam candle, supaya jelas seberapa basi harganya.
+  Alasannya: cron GitHub free tier telat 5–30 menit, jadi entry market saat notif masuk rawan ngejar harga (exit liquidity).
 - `MIN_RR_TP2=2.0`: kandidat dengan R:R ke TP2 (harmonic) / R:R efektif (POC) di bawah 2 dibuang sebelum grading.
 - M15/M30: `scripts/scan_m15.py` + workflow `scan-m15.yml` (universe `SCALP_SYMBOLS` = EUR/USD, GBP/USD, USD/JPY,
   XAU/USD; HTF M15 = 1h; parameter jarak di-scale `TF_SCALE` 0.3 karena struktur M15 jauh lebih pendek).

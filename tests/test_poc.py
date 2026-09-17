@@ -202,7 +202,7 @@ def test_poc_compact_and_chart(monkeypatch):
     cand["htf_alignment"] = "neutral"; cand["htf_timeframe"] = "1week"
     rule_grade_poc(cand)
     msg = format_poc_compact(cand)
-    for key in ("Zona:", "Entry:", "SL:", "TP1:", "TP2:", "LONG"):
+    for key in ("Zona:", "Pasang: Limit BUY", "SL:", "TP1:", "TP2:", "LONG", "scan "):
         assert key in msg
     assert "TP3" not in msg and "Reasoning" not in msg and len(msg) < 1024
     png = render_poc_chart(cand, candles)

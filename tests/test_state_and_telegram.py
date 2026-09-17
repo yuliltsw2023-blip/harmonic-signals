@@ -17,7 +17,7 @@ def test_memory_state_roundtrip(monkeypatch):
     assert not state.is_already_signaled(c)
     state.mark_signaled(c)
     assert state.is_already_signaled(c)
-    assert state.signal_key("EUR/USD", "H4", "Deep Crab", "20260601") == "signal:EUR_USD:H4:DeepCrab:20260601"
+    assert state.signal_key("EUR/USD", "H4", "Deep Crab", "20260601") == "signal:EUR_USD:H4:DeepCrab:20260601:in_prz"
 
 
 def test_format_signal_contains_levels():

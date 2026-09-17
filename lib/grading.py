@@ -85,6 +85,23 @@ def enrich_levels(cand: dict) -> dict:
     return cand
 
 
+def signal_stage(cand: dict, ap: dict) -> str:
+    """Tahap setup relatif ke PRZ dari harga sekarang:
+    in_prz (di zona ± entry_tol) · approaching (≤ approach, belum masuk) ·
+    left (D sudah terbentuk, harga sudah lewat zona ke arah TP) ·
+    far (masih jauh) · pierced (menembus zona ke arah X terlalu jauh)."""
+    dist = cand["prz_distance_pct"]
+    if dist < -ap["approach"]:
+        return "pierced"
+    if dist <= ap["entry_tol"]:
+        return "in_prz"
+    if not cand["d_projected"]:
+        return "left"
+    if dist <= ap["approach"]:
+        return "approaching"
+    return "far"
+
+
 def pre_grade(cand: dict) -> str:
     """Filter murah sebelum bayar Claude. Return "PASS" atau "FAIL", alasan
     disimpan di cand["pre_grade_reason"]."""
@@ -106,19 +123,13 @@ def pre_grade(cand: dict) -> str:
 
     dist = cand["prz_distance_pct"]
     ap = settings.asset_params(cand["pair"], cand.get("timeframe"))
-    approach = ap["approach"]
-    cand["in_prz"] = dist <= ap["entry_tol"]
-    if settings.ENTRY_MODE == "in_prz":
-        # Sinyal = harga SUDAH di PRZ (proyeksi maupun D completed) → entry sekarang.
-        if dist > ap["entry_tol"]:
-            reasons.append(f"harga belum masuk PRZ (masih {dist:.2%} dari zona)")
-        if dist < -approach:
-            reasons.append("harga menembus PRZ terlalu jauh")
-    elif cand["d_projected"]:
-        if dist > approach:
-            reasons.append(f"harga masih {dist:.2%} dari PRZ (belum actionable)")
-        if dist < -approach:
-            reasons.append("harga menembus PRZ terlalu jauh")
+    stage = signal_stage(cand, ap)
+    cand["stage"] = stage
+    cand["in_prz"] = stage == "in_prz"
+    if stage == "pierced":
+        reasons.append("harga menembus PRZ terlalu jauh")
+    elif stage == "far":
+        reasons.append(f"harga masih {dist:.2%} dari PRZ (belum actionable)")
 
     if cand["rr"]["tp2"] < settings.MIN_RR_TP2_PREGRADE:
         reasons.append(f"R:R ke TP2 {cand['rr']['tp2']:.2f} < {settings.MIN_RR_TP2_PREGRADE}")

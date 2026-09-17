@@ -16,8 +16,8 @@ from lib.harmonics import build_candidate, extract_xabcd, match_pattern
 from lib.pivots import swing_pivots
 from lib.poc import analyze_poc, poc_alignment, rule_grade_poc
 from lib.prz import construct_prz
-from lib.state import backend_name, is_already_signaled, mark_signaled
-from lib.telegram import send_poc_signal, send_signal
+from lib.state import backend_name, earlier_stage_signaled, is_already_signaled, mark_signaled
+from lib.telegram import send_left_notice, send_poc_signal, send_signal
 from lib.twelvedata import TwelveDataClient
 from lib.yahoo import YahooClient
 
@@ -74,8 +74,9 @@ def run_scan(timeframe: str, pairs: list[str] | None = None, dry_run: bool | Non
     interval = INTERVAL_OF[timeframe]
     htf_interval = settings.HTF_OF[timeframe]
     print(f"[start] {timeframe} scan · {len(pairs)} pair · DRY_RUN={dry_run} · "
-          f"entry={settings.ENTRY_MODE} · min R:R TP2={settings.MIN_RR_TP2_PREGRADE} · "
+          f"stages={','.join(settings.SIGNAL_STAGES)} · min R:R TP2={settings.MIN_RR_TP2_PREGRADE} · "
           f"state={backend_name()} · model={settings.CLAUDE_MODEL}")
+    scan_stamp = datetime.now(timezone.utc).strftime("%H:%M UTC")
 
     # Client dibuat lazy: scan saham (Yahoo) tidak butuh key Twelve Data.
     clients: dict[str, object] = {}
@@ -87,8 +88,8 @@ def run_scan(timeframe: str, pairs: list[str] | None = None, dry_run: bool | Non
         return clients[src]
 
     stats = {k: 0 for k in ("pairs_scanned", "structures_matched", "skipped_pregrade",
-                            "skipped_duplicate", "grade_c", "signals_sent",
-                            "poc_candidates", "poc_skipped", "poc_sent")}
+                            "skipped_duplicate", "stage_off", "left_notices", "grade_c",
+                            "signals_sent", "poc_candidates", "poc_skipped", "poc_sent")}
     errors: list[dict] = []
 
     for pair in pairs:
@@ -115,14 +116,32 @@ def run_scan(timeframe: str, pairs: list[str] | None = None, dry_run: bool | Non
                 return htf_candles
 
             for cand in cands:
-                tag = f"{pair} {cand['pattern']} {cand['direction']} ({'proj' if cand['d_projected'] else 'done'})"
+                cand["scan_datetime"] = scan_stamp
+                tag = f"{pair} {cand['pattern']} {cand['direction']} ({'proj' if cand['d_projected'] else 'done'}, {cand.get('stage')})"
                 if cand["pre_grade"] == "FAIL":
                     stats["skipped_pregrade"] += 1
                     print(f"[pregrade-fail] {tag}: {cand['pre_grade_reason']}")
                     continue
+                if cand["stage"] not in settings.SIGNAL_STAGES:
+                    stats["stage_off"] += 1
+                    print(f"[stage-off] {tag}")
+                    continue
                 if is_already_signaled(cand):
                     stats["skipped_duplicate"] += 1
                     print(f"[dup] {tag}")
+                    continue
+                if cand["stage"] == "left":
+                    # Hanya berguna kalau user pernah dikasih tahu setup ini sebelumnya.
+                    if not earlier_stage_signaled(cand):
+                        print(f"[left-skip] {tag}: tahap sebelumnya tidak pernah dikirim")
+                        continue
+                    if dry_run:
+                        print(f"[dry_run] Would send left-notice: {tag}")
+                    else:
+                        send_left_notice(cand)
+                        mark_signaled(cand)
+                        print(f"[sent] left-notice {tag}")
+                    stats["left_notices"] += 1
                     continue
 
                 # HTF lazy fetch — hanya untuk kandidat yang lolos pre-grade
@@ -150,6 +169,7 @@ def run_scan(timeframe: str, pairs: list[str] | None = None, dry_run: bool | Non
             if settings.POC_ENABLED:
                 poc = analyze_poc(pair, timeframe, candles)
                 if poc is not None:
+                    poc["scan_datetime"] = scan_stamp
                     ptag = f"{pair} POC {poc['direction']} [{poc['stage']}]"
                     if poc["pre_grade"] == "FAIL":
                         stats["poc_skipped"] += 1

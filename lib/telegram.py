@@ -28,6 +28,12 @@ def side_label(cand: dict) -> str:
     return "LONG 🟢 (buy di PRZ)" if cand["direction"] == "bull" else "SHORT 🔴 (sell di PRZ)"
 
 
+def scan_stamp(cand: dict) -> str:
+    """Jam scan sebenarnya (bukan jam candle) — supaya user tahu seberapa
+    basi harganya saat pesan dibaca."""
+    return cand.get("scan_datetime") or (cand.get("current_datetime", "")[:16] + " UTC")
+
+
 def format_signal(cand: dict, grade: dict) -> str:
     d = price_decimals(cand["pair"])
     f = lambda x: f"{x:.{d}f}"
@@ -93,19 +99,49 @@ def format_compact(cand: dict, grade: dict) -> str:
     prz = cand["prz"]
     esc = html.escape
     dirn = "BULL" if cand["direction"] == "bull" else "BEAR"
+    up = cand["direction"] == "bull"
+    side = "LONG 🟢" if up else "SHORT 🔴"
+    order = f"Limit {'BUY' if up else 'SELL'} <b>{f(cand['entry'])}</b> (mid PRZ)"
+    stage = cand.get("stage", "in_prz")
+    px = f(cand["current_price"])
+    if stage == "in_prz":
+        head = f"✅ <b>MASUK ZONA</b> · {side} · Grade <b>{grade['grade']}</b>"
+        act = [f"Harga <b>{px}</b> sudah di PRZ → limit lo harusnya aktif. Belum pasang? {order.replace('Limit', 'entry sekarang / limit')}"]
+    else:
+        head = f"🕒 <b>SIAPKAN ORDER</b> · {side} · Grade <b>{grade['grade']}</b>"
+        act = [f"Pasang: {order}",
+               f"Harga <b>{px}</b> · masih {cand.get('prz_distance_pct', 0):.2%} dari zona, jangan entry market"]
     lines = [
         f"<b>{esc(cand['pair'])} · {esc(cand['pattern'])} {dirn} · {cand['timeframe']}</b>",
-        f"Arah: <b>{side_label(cand)}</b> · Grade <b>{grade['grade']}</b>",
-        (f"Harga: <b>{f(cand['current_price'])}</b> · di PRZ ✅ entry sekarang"
-         if cand.get("in_prz") else
-         f"Harga: <b>{f(cand['current_price'])}</b> · {cand.get('prz_distance_pct', 0):.2%} dari PRZ"),
+        head, *act,
         f"PRZ: <b>{f(prz['low'])} – {f(prz['high'])}</b>",
         f"SL: <b>{f(cand['sl'])}</b>",
         f"TP1: <b>{f(cand['tps']['tp1'])}</b> (R:R {cand['rr']['tp1']:.1f})",
         f"TP2: <b>{f(cand['tps']['tp2'])}</b> (R:R {cand['rr']['tp2']:.1f})",
-        f"<i>{DISCLAIMER_SHORT} · {cand['current_datetime'][:16]} UTC</i>",
+        f"<i>{DISCLAIMER_SHORT} · scan {scan_stamp(cand)}</i>",
     ]
     return "\n".join(lines)
+
+
+def format_left_notice(cand: dict) -> str:
+    """Pesan teks singkat: harga sudah lewat PRZ menuju TP — jangan kejar."""
+    d = price_decimals(cand["pair"])
+    f = lambda x: f"{x:.{d}f}"
+    esc = html.escape
+    prz = cand["prz"]
+    dirn = "BULL" if cand["direction"] == "bull" else "BEAR"
+    return "\n".join([
+        f"⚠️ <b>{esc(cand['pair'])} · {esc(cand['pattern'])} {dirn} · {cand['timeframe']}</b> — JANGAN KEJAR",
+        f"Harga <b>{f(cand['current_price'])}</b> sudah lewat PRZ {f(prz['low'])} – {f(prz['high'])} "
+        f"ke arah TP1 {f(cand['tps']['tp1'])}.",
+        f"Kalau limit lo sudah kena: kelola SL <b>{f(cand['sl'])}</b> · TP1 <b>{f(cand['tps']['tp1'])}</b> · "
+        f"TP2 <b>{f(cand['tps']['tp2'])}</b>. Kalau belum kena, lewatkan setup ini.",
+        f"<i>scan {scan_stamp(cand)}</i>",
+    ])
+
+
+def send_left_notice(cand: dict) -> dict:
+    return send_message(format_left_notice(cand))
 
 
 def format_poc_compact(cand: dict) -> str:
@@ -120,12 +156,12 @@ def format_poc_compact(cand: dict) -> str:
     lines = [
         f"<b>{esc(cand['pair'])} · POC PULLBACK {'BUY' if up else 'SELL'} · {cand['timeframe']}</b>",
         f"Arah: <b>{side}</b> · Grade <b>{g}</b> · {emoji} {esc(cand.get('stage_label', cand['stage']))}",
+        f"Pasang: Limit {'BUY' if up else 'SELL'} <b>{f(cand['poc'])}</b> (POC) · harga sekarang {f(cand['current_price'])}",
         f"Zona: <b>{f(min(cand['val'], cand['vah']))} – {f(max(cand['val'], cand['vah']))}</b> (VAL–VAH)",
-        f"Entry: <b>{f(cand['poc'])}</b> (POC, limit)",
         f"SL: <b>{f(cand['sl'])}</b>",
         f"TP1: <b>{f(cand['tps']['tp1'])}</b> (R:R {cand['rr']['tp1']:.1f})",
         f"TP2: <b>{f(cand['tps']['tp2'])}</b> (R:R {cand['rr']['tp2']:.1f})",
-        f"<i>{DISCLAIMER_SHORT} · {cand['current_datetime'][:16]} UTC</i>",
+        f"<i>{DISCLAIMER_SHORT} · scan {scan_stamp(cand)}</i>",
     ]
     return "\n".join(lines)
 

@@ -1,16 +1,21 @@
-name: Scan H1 Harmonic Patterns
+name: Scan Hourly (H1 + H4 + D1)
 
 on:
   schedule:
-    # Tiap jam, menit ke-20 (H4 jalan di :05 dan D1 di :10 — jangan tabrakan,
-    # rate limit Twelve Data 8 req/menit dibagi per API key).
-    - cron: "20 * * * *"
+    # 1 menit setelah candle close. Job ini yang menjalankan H1 tiap jam,
+    # H4 di jam 0/4/8/12/16/20, dan D1 di jam 00 — satu setup per jam.
+    - cron: "1 * * * *"
   workflow_dispatch:
+    inputs:
+      force:
+        description: "Paksa timeframe (mis. H4,D1). Kosong = sesuai jam."
+        required: false
+        default: ""
 
 jobs:
   scan:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
 
     env:
       TWELVEDATA_API_KEY: ${{ secrets.TWELVEDATA_API_KEY }}
@@ -23,10 +28,11 @@ jobs:
       CHART_IMG_API_KEY: ${{ secrets.CHART_IMG_API_KEY }}
       CHART_IMG_LAYOUT_ID: ${{ vars.CHART_IMG_LAYOUT_ID }}
       SIGNAL_VERBOSE: ${{ vars.SIGNAL_VERBOSE || 'false' }}
-      ENTRY_MODE: ${{ vars.ENTRY_MODE || 'in_prz' }}
+      SIGNAL_STAGES: ${{ vars.SIGNAL_STAGES || 'approaching,in_prz,left' }}
       MIN_RR_TP2: ${{ vars.MIN_RR_TP2 || '2.0' }}
       LOG_LEVEL: info
       DRY_RUN: ${{ vars.DRY_RUN || 'false' }}
+      SCAN_FORCE: ${{ github.event.inputs.force }}
 
     steps:
       - name: Checkout code
@@ -46,5 +52,5 @@ jobs:
       - name: Cek secret (panjang + fingerprint)
         run: python scripts/manual/check_secrets.py
 
-      - name: Run H1 scan
-        run: python scripts/scan_h1.py
+      - name: Run hourly scan
+        run: python scripts/scan_hourly.py

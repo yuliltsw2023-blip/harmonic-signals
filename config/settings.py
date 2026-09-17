@@ -58,12 +58,18 @@ def asset_params(pair: str, timeframe: str | None = None) -> dict:
             "entry_tol": base["entry_tol"] * k}
 
 
-# --- Entry mode ---------------------------------------------------------------
-# in_prz   : sinyal dikirim HANYA kalau harga sekarang sudah di dalam PRZ
-#            (± entry_tol) → bisa langsung eksekusi tanpa tunggu konfirmasi.
-# approach : mode lama — sinyal dikirim saat harga masih mendekati PRZ
-#            (≤ approach dari tepi zona), user tunggu harga sampai.
-ENTRY_MODE = os.environ.get("ENTRY_MODE", "in_prz").strip().lower() or "in_prz"
+# --- Tahap sinyal harmonic (dua pesan per setup, seperti POC) -----------------
+# approaching : harga ≤ approach dari tepi PRZ, belum masuk → "SIAPKAN ORDER":
+#               pasang limit order di mid PRZ + SL + TP, lalu tinggal.
+# in_prz      : harga sudah di dalam PRZ (± entry_tol) → "MASUK ZONA":
+#               limit harusnya aktif; kalau belum pasang, boleh entry sekarang.
+# left        : D sudah terbentuk dan harga sudah lewat PRZ menuju TP → pesan
+#               teks "jangan kejar" (hanya kalau tahap sebelumnya pernah dikirim).
+# Tahap lain (far/pierced) tidak pernah dikirim. Atur lewat env SIGNAL_STAGES,
+# mis. "in_prz" saja kalau cuma mau pesan saat harga sudah di zona.
+SIGNAL_STAGES = tuple(
+    s.strip().lower() for s in os.environ.get("SIGNAL_STAGES", "approaching,in_prz,left").split(",") if s.strip()
+)
 
 
 # --- Risk ---------------------------------------------------------------------

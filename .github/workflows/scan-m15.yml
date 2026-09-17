@@ -25,7 +25,7 @@ jobs:
       CHART_IMG_API_KEY: ${{ secrets.CHART_IMG_API_KEY }}
       CHART_IMG_LAYOUT_ID: ${{ vars.CHART_IMG_LAYOUT_ID }}
       SIGNAL_VERBOSE: ${{ vars.SIGNAL_VERBOSE || 'false' }}
-      ENTRY_MODE: ${{ vars.ENTRY_MODE || 'in_prz' }}
+      SIGNAL_STAGES: ${{ vars.SIGNAL_STAGES || 'approaching,in_prz,left' }}
       MIN_RR_TP2: ${{ vars.MIN_RR_TP2 || '2.0' }}
       SCALP_TIMEFRAME: ${{ vars.SCALP_TIMEFRAME || 'M15' }}
       LOG_LEVEL: info

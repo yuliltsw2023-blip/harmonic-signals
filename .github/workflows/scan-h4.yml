@@ -1,11 +1,7 @@
 name: Scan H4 Harmonic Patterns
 
 on:
-  schedule:
-    # UTC. Tiap 4 jam, 5 menit setelah bar H4 close.
-    # Free tier Twelve Data delay ~4 jam → yang ter-fetch bar sebelumnya
-    # (lihat README "Data delay"). Dedup mencegah double-send.
-    - cron: "5 0,4,8,12,16,20 * * *"
+  # Cron dipindah ke scan-hourly.yml (17 Sep 2026). File ini hanya untuk Run workflow manual.
   workflow_dispatch:
 
 jobs:
@@ -24,7 +20,7 @@ jobs:
       CHART_IMG_API_KEY: ${{ secrets.CHART_IMG_API_KEY }}
       CHART_IMG_LAYOUT_ID: ${{ vars.CHART_IMG_LAYOUT_ID }}
       SIGNAL_VERBOSE: ${{ vars.SIGNAL_VERBOSE || 'false' }}
-      ENTRY_MODE: ${{ vars.ENTRY_MODE || 'in_prz' }}
+      SIGNAL_STAGES: ${{ vars.SIGNAL_STAGES || 'approaching,in_prz,left' }}
       MIN_RR_TP2: ${{ vars.MIN_RR_TP2 || '2.0' }}
       LOG_LEVEL: info
       DRY_RUN: ${{ vars.DRY_RUN || 'false' }}
