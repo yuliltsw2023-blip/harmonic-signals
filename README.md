@@ -77,7 +77,7 @@ DRY_RUN=true GRADER=rule python scripts/scan_h4.py
    cek log.
 5. Setelah seminggu bersih, ubah `DRY_RUN=false`.
 
-Cron: H1 tiap jam `:20 UTC` (7 simbol, `config/pairs.py` H1_SYMBOLS, tanpa crypto); H4 tiap `00:05, 04:05, …, 20:05 UTC`; D1 `00:10 UTC`. Scan otomatis
+Cron: H1 tiap jam `:20 UTC` (7 simbol, `config/pairs.py` H1_SYMBOLS, tanpa crypto); H4 tiap `00:05, 04:05, …, 20:05 UTC`; D1 `00:10 UTC`; M15 (`scan-m15.yml`) cron nonaktif, lihat bagian "Mode entry". Scan otomatis
 skip Sabtu, Minggu <22:00 UTC, dan Jumat ≥22:00 UTC.
 
 ## POC Pullback screener (strategi kedua)
@@ -136,13 +136,28 @@ DRY_RUN=true GRADER=rule python scripts/scan_stocks.py idx
 | HTF (lazy, hanya pair yang lolos pre-grade) | biasanya 0–10 |
 | **Total** | **≈ 390–405** |
 
-Jatah menit GitHub Actions (repo private, 2000/bulan) adalah batas yang lebih ketat: tiap request Twelve Data ≈ 8 detik, jadi ≈ 1.750 menit/bulan dengan H1 7 simbol. Kalau mau H1 untuk semua simbol: jadikan repo public (menit unlimited) atau upgrade Twelve Data (rate limit lebih longgar).
+Jatah menit GitHub Actions (repo private, 2000/bulan) adalah batas yang lebih ketat: tiap request Twelve Data ≈ 8 detik,
+dan **GitHub membulatkan tiap job ke atas per menit** (job 70 detik = 2 menit). Perkiraan: H4 6×5 menit + D1 5 menit
++ H1 24×2 menit ≈ 83 menit/hari ≈ 2.500 menit/bulan → jatah private habis sekitar tanggal 23–25 (workflow berhenti
+sampai bulan berikutnya). Solusi: jadikan repo public (menit unlimited, key tetap rahasia di Secrets) atau matikan H1.
+
+## Mode entry, R:R minimum, scalping M15
+
+- `ENTRY_MODE=in_prz` (default sejak 17 Sep 2026): sinyal dikirim **hanya kalau harga sekarang sudah di dalam PRZ**
+  (± `entry_tol`, forex 8 pip) — baik D masih proyeksi maupun D sudah terbentuk. Caption Telegram menandai
+  "di PRZ ✅ entry sekarang". `ENTRY_MODE=approach` = perilaku lama (sinyal saat harga masih ≤0.35% dari zona).
+- `MIN_RR_TP2=2.0`: kandidat dengan R:R ke TP2 (harmonic) / R:R efektif (POC) di bawah 2 dibuang sebelum grading.
+- M15/M30: `scripts/scan_m15.py` + workflow `scan-m15.yml` (universe `SCALP_SYMBOLS` = EUR/USD, GBP/USD, USD/JPY,
+  XAU/USD; HTF M15 = 1h; parameter jarak di-scale `TF_SCALE` 0.3 karena struktur M15 jauh lebih pendek).
+  Cron-nya **sengaja nonaktif**: 52 run/hari (07–19 UTC, Sen–Jum) × 2 menit ≈ 2.300 menit/bulan, melebihi jatah repo
+  private. Aktifkan (hapus `#` di `schedule:`) hanya kalau repo sudah public. Twelve Data: +208 request/hari, masih di bawah 800.
 
 ## Tuning
 
 Simbol & asset class di `config/pairs.py` (`SYMBOL_META`: XAU/XAG = metal, BTC/ETH = crypto 24/7).
 Parameter per asset (`ASSET_PARAMS`) dan knob lain di `config/settings.py`: pivot left/right, `MIN_LEG_ATR`,
-`PRZ_APPROACH_PCT` (seberapa dekat harga ke PRZ sebelum dianggap actionable),
+`ASSET_PARAMS[...]["approach"]` / `["entry_tol"]` (jarak ke PRZ yang dianggap actionable / sudah di zona),
+`ENTRY_MODE`, `MIN_RR_TP2`, `TF_SCALE`,
 `MAX_D_AGE_BARS`, `PRZ_BAND_PCT`, `SL_BUFFER_XA`, threshold R:R & confluence
 per grade. Katalog rasio di `config/patterns.py`.
 

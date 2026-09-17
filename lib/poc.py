@@ -177,7 +177,7 @@ def analyze_poc(pair: str, timeframe: str, candles: list[dict]) -> dict | None:
 
     last = candles[-1]
     px = last["close"]
-    ap = settings.POC_APPROACH_PCT[asset_class(pair)]
+    ap = settings.POC_APPROACH_PCT[asset_class(pair)] * settings.tf_scale(timeframe)
     after = candles[end + 1:]
     pb_ext = None
     if after:

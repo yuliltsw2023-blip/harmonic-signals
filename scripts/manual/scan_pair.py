@@ -27,7 +27,7 @@ from lib.telegram import format_signal, send_signal  # noqa: E402
 
 ap = argparse.ArgumentParser()
 ap.add_argument("pair")
-ap.add_argument("timeframe", nargs="?", default="H4", choices=["H4", "D1"])
+ap.add_argument("timeframe", nargs="?", default="H4", choices=["M15", "M30", "H1", "H4", "D1"])
 ap.add_argument("--csv")
 ap.add_argument("--grade", action="store_true")
 ap.add_argument("--send", action="store_true")

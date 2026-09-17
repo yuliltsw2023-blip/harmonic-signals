@@ -62,7 +62,7 @@ def construct_prz(cand: dict, pivots: list[dict] | None = None) -> dict:
     """Bangun PRZ dari level yang jatuh dalam band PRZ_BAND_PCT di sekitar
     level utama pattern. Mengisi cand["prz"] dan mengembalikannya."""
     primary = cand["d_ideal"]
-    band = primary * settings.asset_params(cand["pair"])["prz_band"]
+    band = primary * settings.asset_params(cand["pair"], cand.get("timeframe"))["prz_band"]
     fib = _fib_levels(cand)
     structural = _structural_levels(cand, pivots)
 

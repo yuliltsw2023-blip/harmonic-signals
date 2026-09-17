@@ -26,24 +26,51 @@ STRUCTURAL_LOOKBACK_PIVOTS = 12
 # approach   : jarak harga ke PRZ yang masih dianggap actionable
 # sl_buf_xa  : buffer SL = persen panjang XA
 # sl_min_pct : buffer SL minimum sebagai persen harga (crypto 1.5% beyond X)
+# entry_tol  : toleransi di luar tepi PRZ yang masih dihitung "sudah di zona"
+#              (ENTRY_MODE=in_prz) — forex 8 pip di 1.0000, crypto 0.25%
 ASSET_PARAMS = {
-    "forex":  {"prz_band": 0.005, "approach": 0.0035, "sl_buf_xa": 0.05, "sl_min_pct": 0.0},
-    "metal":  {"prz_band": 0.006, "approach": 0.0040, "sl_buf_xa": 0.05, "sl_min_pct": 0.0},
-    "crypto": {"prz_band": 0.010, "approach": 0.0060, "sl_buf_xa": 0.10, "sl_min_pct": 0.015},
+    "forex":  {"prz_band": 0.005, "approach": 0.0035, "entry_tol": 0.0008, "sl_buf_xa": 0.05, "sl_min_pct": 0.0},
+    "metal":  {"prz_band": 0.006, "approach": 0.0040, "entry_tol": 0.0010, "sl_buf_xa": 0.05, "sl_min_pct": 0.0},
+    "crypto": {"prz_band": 0.010, "approach": 0.0060, "entry_tol": 0.0025, "sl_buf_xa": 0.10, "sl_min_pct": 0.015},
     # Saham (data Yahoo, D1): gap & tick lebih lebar → band lebih longgar.
-    "stock_us":  {"prz_band": 0.015, "approach": 0.0150, "sl_buf_xa": 0.05, "sl_min_pct": 0.0},
-    "stock_idx": {"prz_band": 0.020, "approach": 0.0200, "sl_buf_xa": 0.05, "sl_min_pct": 0.0},
+    "stock_us":  {"prz_band": 0.015, "approach": 0.0150, "entry_tol": 0.0050, "sl_buf_xa": 0.05, "sl_min_pct": 0.0},
+    "stock_idx": {"prz_band": 0.020, "approach": 0.0200, "entry_tol": 0.0100, "sl_buf_xa": 0.05, "sl_min_pct": 0.0},
 }
 
+# Skala parameter jarak (prz_band / approach / entry_tol) per timeframe.
+# Struktur XABCD di M15 jauh lebih pendek dari H4 → band 0.5% harga bakal
+# "menelan" semua level Fib dan confluence jadi palsu. H1/H4/D1 tetap 1.0
+# (sudah live, tidak diubah).
+TF_SCALE = {"M15": 0.3, "M30": 0.4, "H1": 1.0, "H4": 1.0, "D1": 1.0}
 
-def asset_params(pair: str) -> dict:
+
+def tf_scale(timeframe: str | None) -> float:
+    return TF_SCALE.get(timeframe or "", 1.0)
+
+
+def asset_params(pair: str, timeframe: str | None = None) -> dict:
     from config.pairs import asset_class
-    return ASSET_PARAMS[asset_class(pair)]
+    base = ASSET_PARAMS[asset_class(pair)]
+    k = tf_scale(timeframe)
+    if k == 1.0:
+        return base
+    return {**base, "prz_band": base["prz_band"] * k, "approach": base["approach"] * k,
+            "entry_tol": base["entry_tol"] * k}
+
+
+# --- Entry mode ---------------------------------------------------------------
+# in_prz   : sinyal dikirim HANYA kalau harga sekarang sudah di dalam PRZ
+#            (± entry_tol) → bisa langsung eksekusi tanpa tunggu konfirmasi.
+# approach : mode lama — sinyal dikirim saat harga masih mendekati PRZ
+#            (≤ approach dari tepi zona), user tunggu harga sampai.
+ENTRY_MODE = os.environ.get("ENTRY_MODE", "in_prz").strip().lower() or "in_prz"
 
 
 # --- Risk ---------------------------------------------------------------------
 SL_BUFFER_XA = 0.05        # 5% dari panjang leg XA, beyond X (default forex)
-MIN_RR_TP2_PREGRADE = 1.5  # di bawah ini langsung FAIL sebelum ke Claude
+# R:R minimum ke TP2 (harmonic) / R:R efektif (POC); di bawah ini langsung
+# FAIL sebelum ke Claude. Default 2.0 (permintaan user: minimal 1:2).
+MIN_RR_TP2_PREGRADE = float(os.environ.get("MIN_RR_TP2", "2.0").strip() or 2.0)
 
 # --- Grading ------------------------------------------------------------------
 GRADE_RR_A = 3.0
@@ -58,7 +85,7 @@ CLAUDE_MAX_TOKENS = 4096
 # --- POC Pullback screener (skill poc-pullback-entry) -------------------------
 POC_ENABLED = os.environ.get("POC_ENABLED", "true").lower() == "true"
 # Pivot N kiri/kanan per timeframe (skill: 5 untuk H1–H4, 3 untuk D1+).
-POC_PIVOT = {"H1": 5, "H4": 5, "D1": 3}
+POC_PIVOT = {"M15": 5, "M30": 5, "H1": 5, "H4": 5, "D1": 3}
 POC_MIN_LEG_BARS = 8       # leg < ini → profile tidak representatif
 POC_LEG_BARS_A = 10
 POC_BINS = 40
@@ -75,7 +102,7 @@ POC_SL_ATR = {"forex": 0.2, "metal": 0.2, "crypto": 0.4, "stock_us": 0.3, "stock
 # --- HTF ---------------------------------------------------------------------
 # Timeframe HTF untuk alignment check, di-fetch lazy (hanya pair yang punya
 # kandidat lolos pre-grade) supaya hemat budget Twelve Data.
-HTF_OF = {"H1": "4h", "H4": "1day", "D1": "1week"}
+HTF_OF = {"M15": "1h", "M30": "4h", "H1": "4h", "H4": "1day", "D1": "1week"}
 HTF_OUTPUTSIZE = 120
 
 

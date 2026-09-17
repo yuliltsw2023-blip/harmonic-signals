@@ -35,6 +35,9 @@ SYMBOL_META = {
 # GitHub Actions (2000/bulan repo private) & Twelve Data cukup. Crypto sengaja
 # TIDAK di-scan H1 (skill: crypto minimal H4, terlalu banyak wick likuidasi).
 H1_SYMBOLS = ["EUR/USD", "GBP/USD", "USD/JPY", "GBP/JPY", "EUR/JPY", "GBP/AUD", "XAU/USD"]
+# Universe scalping M15/M30: spread paling tipis + likuid di London/NY.
+# Tiap simbol = 1 request (8 detik) per run, jadi sengaja cuma 4.
+SCALP_SYMBOLS = ["EUR/USD", "GBP/USD", "USD/JPY", "XAU/USD"]
 
 EXTRA_SYMBOLS = [s for s, m in SYMBOL_META.items() if m.get("enabled", True)]
 SCAN_SYMBOLS = MAJOR_PAIRS + EXTRA_SYMBOLS
@@ -61,6 +64,8 @@ for _s in STOCK_IDX_SYMBOLS:
 def symbols_for(timeframe: str) -> list[str]:
     if timeframe == "H1":
         return list(H1_SYMBOLS)
+    if timeframe in ("M15", "M30"):
+        return list(SCALP_SYMBOLS)
     if timeframe == "STOCK_US":
         return list(STOCK_US_SYMBOLS)
     if timeframe == "STOCK_IDX":

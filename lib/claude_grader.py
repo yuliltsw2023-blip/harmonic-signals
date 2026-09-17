@@ -54,7 +54,11 @@ FOMC/CPI/geopolitik, round number kelipatan 50 kuat. Forex - session London/NY.
 
 Timeframe H1 = day trade: session filter lebih penting (London/NY overlap),
 hindari Asia session kecuali pair JPY/AUD, dan noise lebih tinggi -> lebih
-konservatif saat ragu.
+konservatif saat ragu. M15/M30 = scalping: noise jauh lebih tinggi, hanya
+London/NY, spread relatif besar -> R:R harus tetap >=2 setelah spread.
+Kalau field IN_PRZ = ya, harga sudah di dalam PRZ dan user berniat entry
+sekarang tanpa tunggu konfirmasi -> nilai apakah zona ini layak dieksekusi
+langsung (Aggressive/Scaled), bukan sekadar "menunggu".
 
 Pilih entry_model: Scaled kalau PRZ lebar (>0.2%) atau setup high conviction;
 Conservative kalau HTF netral/counter atau pattern Butterfly/Cypher;
@@ -80,7 +84,8 @@ def _fmt(cand: dict) -> str:
     if p["D"]:
         lines.append(f"D={f(p['D']['price'])} ({p['D']['datetime']})")
     lines.append(f"D ideal={f(cand['d_ideal'])}  harga sekarang={f(cand['current_price'])} "
-                 f"({cand['current_datetime']}), jarak ke PRZ={cand['prz_distance_pct']:.2%}")
+                 f"({cand['current_datetime']}), jarak ke PRZ={cand['prz_distance_pct']:.2%}, "
+                 f"IN_PRZ={'ya' if cand.get('in_prz') else 'belum'}")
     lines.append("RATIOS: " + ", ".join(f"{k}={v:.3f}" for k, v in cand["ratios"].items()))
     lines.append("DEVIASI: " + ", ".join(f"{k}={v:.1%}" for k, v in cand["deviations"].items())
                  + f"  (avg {cand['deviation_avg']:.1%}, max {cand['deviation_max']:.1%})")

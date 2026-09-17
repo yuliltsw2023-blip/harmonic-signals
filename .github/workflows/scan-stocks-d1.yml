@@ -29,6 +29,8 @@ jobs:
       CHART_IMG_LAYOUT_ID: ${{ vars.CHART_IMG_LAYOUT_ID }}
       POC_ENABLED: ${{ vars.POC_ENABLED || 'true' }}
       SIGNAL_VERBOSE: ${{ vars.SIGNAL_VERBOSE || 'false' }}
+      ENTRY_MODE: ${{ vars.ENTRY_MODE || 'in_prz' }}
+      MIN_RR_TP2: ${{ vars.MIN_RR_TP2 || '2.0' }}
       LOG_LEVEL: info
       DRY_RUN: ${{ vars.DRY_RUN || 'false' }}
 

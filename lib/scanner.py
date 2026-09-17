@@ -21,7 +21,7 @@ from lib.telegram import send_poc_signal, send_signal
 from lib.twelvedata import TwelveDataClient
 from lib.yahoo import YahooClient
 
-INTERVAL_OF = {"H1": "1h", "H4": "4h", "D1": "1day"}
+INTERVAL_OF = {"M15": "15min", "M30": "30min", "H1": "1h", "H4": "4h", "D1": "1day"}
 
 
 def is_forex_closed(now: datetime | None = None) -> bool:
@@ -74,6 +74,7 @@ def run_scan(timeframe: str, pairs: list[str] | None = None, dry_run: bool | Non
     interval = INTERVAL_OF[timeframe]
     htf_interval = settings.HTF_OF[timeframe]
     print(f"[start] {timeframe} scan · {len(pairs)} pair · DRY_RUN={dry_run} · "
+          f"entry={settings.ENTRY_MODE} · min R:R TP2={settings.MIN_RR_TP2_PREGRADE} · "
           f"state={backend_name()} · model={settings.CLAUDE_MODEL}")
 
     # Client dibuat lazy: scan saham (Yahoo) tidak butuh key Twelve Data.

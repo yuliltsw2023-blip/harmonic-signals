@@ -96,6 +96,9 @@ def format_compact(cand: dict, grade: dict) -> str:
     lines = [
         f"<b>{esc(cand['pair'])} · {esc(cand['pattern'])} {dirn} · {cand['timeframe']}</b>",
         f"Arah: <b>{side_label(cand)}</b> · Grade <b>{grade['grade']}</b>",
+        (f"Harga: <b>{f(cand['current_price'])}</b> · di PRZ ✅ entry sekarang"
+         if cand.get("in_prz") else
+         f"Harga: <b>{f(cand['current_price'])}</b> · {cand.get('prz_distance_pct', 0):.2%} dari PRZ"),
         f"PRZ: <b>{f(prz['low'])} – {f(prz['high'])}</b>",
         f"SL: <b>{f(cand['sl'])}</b>",
         f"TP1: <b>{f(cand['tps']['tp1'])}</b> (R:R {cand['rr']['tp1']:.1f})",

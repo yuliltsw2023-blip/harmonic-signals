@@ -105,8 +105,16 @@ def pre_grade(cand: dict) -> str:
         reasons.append("harga sudah lewat SL/X — pattern void")
 
     dist = cand["prz_distance_pct"]
-    approach = settings.asset_params(cand["pair"])["approach"]
-    if cand["d_projected"]:
+    ap = settings.asset_params(cand["pair"], cand.get("timeframe"))
+    approach = ap["approach"]
+    cand["in_prz"] = dist <= ap["entry_tol"]
+    if settings.ENTRY_MODE == "in_prz":
+        # Sinyal = harga SUDAH di PRZ (proyeksi maupun D completed) → entry sekarang.
+        if dist > ap["entry_tol"]:
+            reasons.append(f"harga belum masuk PRZ (masih {dist:.2%} dari zona)")
+        if dist < -approach:
+            reasons.append("harga menembus PRZ terlalu jauh")
+    elif cand["d_projected"]:
         if dist > approach:
             reasons.append(f"harga masih {dist:.2%} dari PRZ (belum actionable)")
         if dist < -approach:

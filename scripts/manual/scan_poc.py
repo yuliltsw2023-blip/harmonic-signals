@@ -25,7 +25,7 @@ from lib.telegram import format_poc_signal, send_poc_signal  # noqa: E402
 
 ap = argparse.ArgumentParser()
 ap.add_argument("pair")
-ap.add_argument("timeframe", nargs="?", default="H4", choices=["H1", "H4", "D1"])
+ap.add_argument("timeframe", nargs="?", default="H4", choices=["M15", "M30", "H1", "H4", "D1"])
 ap.add_argument("--csv", help="datetime,open,high,low,close[,volume]")
 ap.add_argument("--send", action="store_true", help="kirim ke Telegram")
 ap.add_argument("--json", action="store_true", help="dump kandidat mentah")

@@ -5,7 +5,7 @@ from typing import Literal
 
 import requests
 
-Interval = Literal["4h", "1day", "1week"]
+Interval = Literal["15min", "30min", "1h", "4h", "1day", "1week"]
 
 
 class TwelveDataError(RuntimeError):

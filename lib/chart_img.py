@@ -14,8 +14,8 @@ import requests
 
 API_URL = "https://api.chart-img.com/v2/tradingview/advanced-chart"
 LAYOUT_URL = "https://api.chart-img.com/v2/tradingview/layout-chart/{layout_id}"
-INTERVAL_OF = {"H1": "1h", "H4": "4h", "D1": "1D"}
-BAR_HOURS = {"H1": 1, "H4": 4, "D1": 24}
+INTERVAL_OF = {"M15": "15m", "M30": "30m", "H1": "1h", "H4": "4h", "D1": "1D"}
+BAR_HOURS = {"M15": 0.25, "M30": 0.5, "H1": 1, "H4": 4, "D1": 24}
 
 PATTERN = "rgb(179,157,219)"
 PRZ_LINE = "rgb(126,87,194)"
