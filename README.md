@@ -138,9 +138,9 @@ DRY_RUN=true GRADER=rule python scripts/scan_stocks.py idx
 
 Jatah menit GitHub Actions (repo private, 2000/bulan) adalah batas yang lebih ketat: tiap request Twelve Data ≈ 8 detik,
 dan **GitHub membulatkan tiap job ke atas per menit** (job 70 detik = 2 menit). Dengan job hourly gabungan: 18 jam × 2 menit
-(H1 saja) + 5 jam × 6 menit (H1+H4) + 1 jam × 10 menit (H1+H4+D1) ≈ 76 menit/hari ≈ 2.300 menit/bulan (sebelum digabung
-≈ 2.500). Masih di atas jatah private → habis sekitar tanggal 25–26. Solusi: jadikan repo public (menit unlimited, key tetap
-rahasia di Secrets) atau kecilkan `H1_SYMBOLS`.
+(H1 saja) + 5 jam × 6 menit (H1+H4) + 1 jam × 10 menit (H1+H4+D1) ≈ 76 menit/hari kerja. Cron hanya Senin–Jumat
+(weekend forex tutup, run cuma buang setup): 22 hari × 76 ≈ **1.700 menit/bulan**, di bawah jatah private dengan sisa
+≈300 (sebelum digabung & masih jalan weekend ≈ 2.100). M15 tetap tidak muat di private (+≈2.300); butuh repo public.
 
 ## Mode entry, R:R minimum, scalping M15
 

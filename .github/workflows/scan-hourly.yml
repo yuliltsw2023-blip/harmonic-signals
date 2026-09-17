@@ -2,9 +2,12 @@ name: Scan Hourly (H1 + H4 + D1)
 
 on:
   schedule:
-    # 1 menit setelah candle close. Job ini yang menjalankan H1 tiap jam,
-    # H4 di jam 0/4/8/12/16/20, dan D1 di jam 00 — satu setup per jam.
-    - cron: "1 * * * *"
+    # 1 menit setelah candle close, Senin–Jumat saja (UTC). Job ini menjalankan
+    # H1 tiap jam, H4 di jam 0/4/8/12/16/20, dan D1 di jam 00 — satu setup per jam.
+    # Sabtu–Minggu forex tutup: run cuma buang ~1 menit setup tanpa hasil
+    # (≈200 menit/bulan). Crypto (BTC/ETH) sengaja ikut libur — skill: hindari
+    # entry weekend, volume tipis.
+    - cron: "1 * * * 1-5"
   workflow_dispatch:
     inputs:
       force:
