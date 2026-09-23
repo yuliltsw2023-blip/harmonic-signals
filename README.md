@@ -170,6 +170,14 @@ Parameter per asset (`ASSET_PARAMS`) dan knob lain di `config/settings.py`: pivo
 `MAX_D_AGE_BARS`, `PRZ_BAND_PCT`, `SL_BUFFER_XA`, threshold R:R & confluence
 per grade. Katalog rasio di `config/patterns.py`.
 
+## Eksekusi otomatis ke MetaTrader 5 (HFM)
+
+Setiap sinyal yang dikirim ke Telegram (harmonic tahap SIAPKAN ORDER / MASUK ZONA, POC) juga ditulis sebagai event
+order ke antrean Upstash `mt5:queue` (`lib/orders.py`, `MT5_QUEUE=true`). Eksekutor `executor/` di PC Windows yang
+terminal MT5-nya nyala membaca antrean itu dan memasang pending limit (atau market kalau harga sudah di zona) dengan lot
+= risiko 1% ekuitas (Grade B 0.5%), 50/50 TP1/TP2, SL ke breakeven setelah TP1, pembatalan otomatis saat "jangan
+kejar" / zona tembus / kedaluwarsa, batas 3 setup aktif dan rugi harian 3%. Panduan pasang: `executor/README.md`.
+
 ## Keputusan desain yang menyimpang dari spec (sengaja)
 
 - **Dedup key projected D pakai tanggal C**, bukan candle terakhir. Kalau

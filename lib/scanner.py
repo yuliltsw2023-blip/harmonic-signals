@@ -9,14 +9,16 @@ import traceback
 from datetime import datetime, timezone
 
 from config import settings
-from config.pairs import data_source, market_247, symbols_for
+from config.pairs import data_source, is_stock, market_247, symbols_for
 from lib.claude_grader import grade_setup
 from lib.grading import enrich_levels, htf_alignment, htf_trend, pre_grade, rule_grade
 from lib.harmonics import build_candidate, extract_xabcd, match_pattern
 from lib.pivots import swing_pivots
 from lib.poc import analyze_poc, poc_alignment, rule_grade_poc
 from lib.prz import construct_prz
-from lib.state import backend_name, earlier_stage_signaled, is_already_signaled, mark_signaled
+from lib.orders import harmonic_event, poc_event
+from lib.state import (backend_name, earlier_stage_signaled, is_already_signaled, mark_signaled,
+                       mt5_queue_enabled, push_order_event)
 from lib.telegram import send_left_notice, send_poc_signal, send_signal
 from lib.twelvedata import TwelveDataClient
 from lib.yahoo import YahooClient
@@ -89,7 +91,19 @@ def run_scan(timeframe: str, pairs: list[str] | None = None, dry_run: bool | Non
 
     stats = {k: 0 for k in ("pairs_scanned", "structures_matched", "skipped_pregrade",
                             "skipped_duplicate", "stage_off", "left_notices", "grade_c",
-                            "signals_sent", "poc_candidates", "poc_skipped", "poc_sent")}
+                            "signals_sent", "poc_candidates", "poc_skipped", "poc_sent", "mt5_events")}
+    queue_on = mt5_queue_enabled() and not dry_run
+
+    def queue(ev: dict, pair: str) -> None:
+        """Kirim event ke antrean eksekutor MT5 (saham tidak, HFM tidak punya IDX)."""
+        if not queue_on or is_stock(pair):
+            return
+        try:
+            push_order_event(ev)
+            stats["mt5_events"] += 1
+            print(f"[mt5-queue] {ev['action']} {ev['id']}")
+        except Exception as e:  # noqa: BLE001 — antrean gagal jangan batalin sinyal
+            print(f"[warn] antrean MT5 gagal ({e})")
     errors: list[dict] = []
 
     for pair in pairs:
@@ -121,6 +135,11 @@ def run_scan(timeframe: str, pairs: list[str] | None = None, dry_run: bool | Non
                 if cand["pre_grade"] == "FAIL":
                     stats["skipped_pregrade"] += 1
                     print(f"[pregrade-fail] {tag}: {cand['pre_grade_reason']}")
+                    if cand.get("stage") == "pierced" and queue_on and earlier_stage_signaled(cand):
+                        cancel = dict(cand, stage="cancel")
+                        if not is_already_signaled(cancel):
+                            queue(harmonic_event(cand, action="cancel"), pair)
+                            mark_signaled(cancel)
                     continue
                 if cand["stage"] not in settings.SIGNAL_STAGES:
                     stats["stage_off"] += 1
@@ -140,6 +159,7 @@ def run_scan(timeframe: str, pairs: list[str] | None = None, dry_run: bool | Non
                     else:
                         send_left_notice(cand)
                         mark_signaled(cand)
+                        queue(harmonic_event(cand, action="cancel"), pair)
                         print(f"[sent] left-notice {tag}")
                     stats["left_notices"] += 1
                     continue
@@ -162,6 +182,7 @@ def run_scan(timeframe: str, pairs: list[str] | None = None, dry_run: bool | Non
                 else:
                     send_signal(cand, grade, candles)
                     mark_signaled(cand)
+                    queue(harmonic_event(cand, grade), pair)
                     print(f"[sent] {tag} Grade {grade['grade']}")
                 stats["signals_sent"] += 1
 
@@ -193,6 +214,7 @@ def run_scan(timeframe: str, pairs: list[str] | None = None, dry_run: bool | Non
                         else:
                             send_poc_signal(poc, candles)
                             mark_signaled(poc)
+                            queue(poc_event(poc), pair)
                             print(f"[sent] {ptag} Grade {g['grade']}")
                             stats["poc_sent"] += 1
 

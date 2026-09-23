@@ -3,11 +3,16 @@ dry run lokal)."""
 
 from __future__ import annotations
 
+import json
 import os
 from datetime import datetime, timezone
 
 _redis = None
 _memory: dict[str, str] = {}
+_queue: list[str] = []          # antrean order in-memory (test / tanpa Upstash)
+
+ORDER_QUEUE = "mt5:queue"
+HALT_KEY = "mt5:halt"
 
 
 def _client():
@@ -71,3 +76,42 @@ def mark_signaled(cand: dict, ttl_seconds: int = 604800) -> None:  # 7 hari
 
 def backend_name() -> str:
     return "upstash" if _client() is not None else "memory"
+
+
+# ---------------------------------------------------------------------------
+# Antrean order untuk eksekutor MT5 (executor/) — scanner RPUSH, eksekutor LPOP
+# ---------------------------------------------------------------------------
+
+def mt5_queue_enabled() -> bool:
+    return os.environ.get("MT5_QUEUE", "true").strip().lower() == "true"
+
+
+def push_order_event(event: dict) -> None:
+    payload = json.dumps(event, ensure_ascii=False)
+    r = _client()
+    if r is None:
+        _queue.append(payload)
+        return
+    r.rpush(ORDER_QUEUE, payload)
+
+
+def pop_order_events(max_items: int = 50) -> list[dict]:
+    out: list[dict] = []
+    r = _client()
+    for _ in range(max_items):
+        raw = _queue.pop(0) if r is None and _queue else (r.lpop(ORDER_QUEUE) if r is not None else None)
+        if raw is None:
+            break
+        try:
+            out.append(json.loads(raw))
+        except ValueError:
+            continue
+    return out
+
+
+def halt_flag() -> bool:
+    r = _client()
+    if r is None:
+        return _memory.get(HALT_KEY) in ("1", "true")
+    v = r.get(HALT_KEY)
+    return str(v).lower() in ("1", "true") if v is not None else False
