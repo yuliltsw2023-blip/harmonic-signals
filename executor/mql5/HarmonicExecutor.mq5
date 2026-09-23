@@ -35,6 +35,36 @@ input string InpHaltKey       = "mt5:halt";
 CTrade   trade;
 long     g_haltDay = 0;          // yyyymmdd saat batas rugi harian kena
 datetime g_lastPoll = 0;
+// Nilai efektif: dari input, atau dari MQL5\Files\harmonic_executor.cfg kalau input kosong
+string   g_url = "", g_token = "", g_tgToken = "", g_tgChat = "";
+
+//+------------------------------------------------------------------+
+//| Config file: baris key=value (upstash_url, upstash_token,          |
+//| telegram_token, telegram_chat). Supaya tidak perlu isi dialog EA.  |
+//+------------------------------------------------------------------+
+void LoadConfig()
+  {
+   g_url = InpUpstashUrl; g_token = InpUpstashToken; g_tgToken = InpTelegramToken; g_tgChat = InpTelegramChat;
+   if(g_url != "" && g_token != "") return;
+   int h = FileOpen("harmonic_executor.cfg", FILE_READ | FILE_TXT | FILE_ANSI, '\n', CP_UTF8);
+   if(h == INVALID_HANDLE) { Print("[HS] harmonic_executor.cfg tidak ada di MQL5\\Files dan input kosong"); return; }
+   while(!FileIsEnding(h))
+     {
+      string line = FileReadString(h);
+      StringTrimLeft(line); StringTrimRight(line);
+      if(line == "" || StringGetCharacter(line, 0) == '#') continue;
+      int eq = StringFind(line, "=");
+      if(eq < 0) continue;
+      string k = StringSubstr(line, 0, eq), v = StringSubstr(line, eq + 1);
+      StringTrimRight(k); StringTrimLeft(v); StringTrimRight(v);
+      if(k == "upstash_url" && g_url == "") g_url = v;
+      else if(k == "upstash_token" && g_token == "") g_token = v;
+      else if(k == "telegram_token" && g_tgToken == "") g_tgToken = v;
+      else if(k == "telegram_chat" && g_tgChat == "") g_tgChat = v;
+     }
+   FileClose(h);
+   Print("[HS] config dibaca dari harmonic_executor.cfg (upstash ", (g_url != "" ? "OK" : "KOSONG"), ", telegram ", (g_tgToken != "" ? "OK" : "kosong"), ")");
+  }
 
 //+------------------------------------------------------------------+
 //| Util: log + Telegram                                              |
@@ -69,10 +99,10 @@ bool HttpPost(const string url, const string headers, const string body, string 
 void Notify(const string text)
   {
    Log(text);
-   if(InpTelegramToken == "" || InpTelegramChat == "") return;
-   string body = "{\"chat_id\":\"" + InpTelegramChat + "\",\"text\":\"" + JsonEscape("🤖 MT5 EA · " + text) + "\",\"parse_mode\":\"HTML\"}";
+   if(g_tgToken == "" || g_tgChat == "") return;
+   string body = "{\"chat_id\":\"" + g_tgChat + "\",\"text\":\"" + JsonEscape("🤖 MT5 EA · " + text) + "\",\"parse_mode\":\"HTML\"}";
    string out;
-   HttpPost("https://api.telegram.org/bot" + InpTelegramToken + "/sendMessage", "Content-Type: application/json\r\n", body, out);
+   HttpPost("https://api.telegram.org/bot" + g_tgToken + "/sendMessage", "Content-Type: application/json\r\n", body, out);
   }
 
 //+------------------------------------------------------------------+
@@ -82,8 +112,8 @@ bool Upstash(const string cmdJson, string &result, bool &isNull)
   {
    string out;
    isNull = false;
-   if(InpUpstashUrl == "" || InpUpstashToken == "") { Log("Upstash URL/token kosong"); return false; }
-   if(!HttpPost(InpUpstashUrl, "Authorization: Bearer " + InpUpstashToken + "\r\nContent-Type: application/json\r\n", cmdJson, out))
+   if(g_url == "" || g_token == "") { Log("Upstash URL/token kosong (isi input EA atau MQL5\\Files\\harmonic_executor.cfg)"); return false; }
+   if(!HttpPost(g_url, "Authorization: Bearer " + g_token + "\r\nContent-Type: application/json\r\n", cmdJson, out))
       return false;
    int p = StringFind(out, "\"result\":");
    if(p < 0) { Log("respons Upstash aneh: " + StringSubstr(out, 0, 200)); return false; }
@@ -459,6 +489,7 @@ int OnInit()
    trade.SetExpertMagicNumber(InpMagic);
    trade.SetDeviationInPoints(InpDeviation);
    trade.SetAsyncMode(false);
+   LoadConfig();
    if(GlobalVariableCheck("HS_HALT_DAY")) g_haltDay = (long)GlobalVariableGet("HS_HALT_DAY");
    if(!TerminalInfoInteger(TERMINAL_TRADE_ALLOWED)) Log("Tombol Algo Trading OFF — order tidak akan masuk sampai dinyalakan");
    EventSetTimer(MathMax(5, InpPollSec));

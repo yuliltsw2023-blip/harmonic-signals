@@ -43,10 +43,14 @@ Pasang:
 1. Salin `HarmonicExecutor.mq5` ke folder data terminal `MQL5\Experts\` (File → Open Data Folder), compile di MetaEditor (F7).
 2. Tools → Options → Expert Advisors: centang **Allow WebRequest for listed URL** dan tambahkan
    `https://<akun>.upstash.io` (host dari UPSTASH_REDIS_REST_URL) dan `https://api.telegram.org`. Tombol Algo Trading ON.
-3. Buka satu chart apa saja (mis. EURUSD H1), Navigator → Expert Advisors → HarmonicExecutor → drag ke chart.
-   Tab Inputs → Load → pilih preset `HarmonicExecutor.set` (berisi URL/token Upstash & Telegram) → OK.
-4. Tab Experts di bawah harus menampilkan "[HS] ..." dan Telegram dapat pesan "EA jalan".
-5. **Hanya satu eksekutor yang boleh jalan** (EA ini ATAU `python -m executor.run`), kalau tidak order dobel.
+3. Taruh file `harmonic_executor.cfg` (baris `upstash_url=`, `upstash_token=`, `telegram_token=`, `telegram_chat=`)
+   di folder data terminal `MQL5\Files\`. EA membacanya saat input Upstash di dialog dibiarkan kosong — jadi tidak
+   perlu mengetik apa pun di dialog EA. (Alternatif: isi tab Inputs manual / Load preset.)
+4. Buka satu chart apa saja (mis. EURUSD H1), Navigator → Expert Advisors → HarmonicExecutor → drag ke chart → OK.
+   Catatan: kalau EA dicompile ulang dari luar (metaeditor /compile), terminal TIDAK me-reload EA di chart —
+   lepas & pasang lagi, atau restart terminal.
+5. Tab Experts di bawah harus menampilkan "[HS] config dibaca ..." dan "[HS] EA jalan", Telegram dapat pesan "EA jalan".
+6. **Hanya satu eksekutor yang boleh jalan** (EA ini ATAU `python -m executor.run`), kalau tidak order dobel.
 Mac: MT5 for Mac dari HFM, langkah sama; System Settings → Energy → matikan sleep; MT5 masuk Login Items.
 
 ## Cara stop / kontrol
