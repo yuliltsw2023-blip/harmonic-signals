@@ -202,11 +202,30 @@ def main() -> int:
     _utf8()
     ap = argparse.ArgumentParser()
     ap.add_argument("--once", action="store_true", help="proses antrean sekali lalu keluar")
+    ap.add_argument("--check", action="store_true", help="hanya tes koneksi + mapping simbol, tidak sentuh antrean")
     args = ap.parse_args()
     cfg = ExecutorConfig.from_env()
-    if not cfg.login and not cfg.path:
-        log("MT5_LOGIN kosong → pakai terminal MT5 yang sedang login (harus sudah terbuka)")
-    return Executor(cfg).run(once=args.once)
+    if not cfg.login:
+        log("MT5_LOGIN kosong → pakai akun yang sedang login di terminal MT5 (harus sudah terbuka)")
+    ex = Executor(cfg)
+    if args.check:
+        info = ex.bridge.connect()
+        log(f"MT5 terhubung: akun {info['login']} @ {info['server']} · saldo {info['balance']} {info['currency']} · "
+            f"ekuitas {info['equity']} · tombol Algo Trading {'ON' if info['algo_button'] else 'OFF (klik tombol Algo Trading di toolbar MT5!)'}")
+        for pair in ("EUR/USD", "GBP/USD", "USD/JPY", "XAU/USD", "BTC/USD", "ETH/USD"):
+            try:
+                sym = ex.bridge.resolve_symbol(pair)
+                tick = ex.bridge.mt5.symbol_info_tick(sym)
+                if tick is None or not tick.bid:
+                    time.sleep(1.5)  # baru masuk Market Watch → tunggu tick pertama
+                    tick = ex.bridge.mt5.symbol_info_tick(sym)
+                log(f"  {pair} → {sym}  bid {getattr(tick, 'bid', None)} ask {getattr(tick, 'ask', None)}")
+            except BridgeError as e:
+                log(f"  {pair}: {e}")
+        log(f"antrean: {state.backend_name()} · halt: {state.halt_flag()}")
+        ex.bridge.shutdown()
+        return 0
+    return ex.run(once=args.once)
 
 
 if __name__ == "__main__":

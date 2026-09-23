@@ -71,8 +71,13 @@ class MT5Bridge:
         acc = self.mt5.account_info()
         if acc is None:
             raise BridgeError(f"account_info kosong: {self.mt5.last_error()}")
+        term = self.mt5.terminal_info()
+        # trade_allowed = akun boleh trading DAN tombol "Algo Trading" di terminal ON
+        # (tanpa tombol itu order_send ditolak: AutoTrading disabled by client)
         return {"login": acc.login, "server": acc.server, "balance": acc.balance,
-                "equity": acc.equity, "currency": acc.currency, "trade_allowed": acc.trade_allowed}
+                "equity": acc.equity, "currency": acc.currency,
+                "trade_allowed": bool(acc.trade_allowed and (term is None or term.trade_allowed)),
+                "algo_button": None if term is None else bool(term.trade_allowed)}
 
     def shutdown(self) -> None:
         if self.mt5 is not None:
@@ -87,7 +92,8 @@ class MT5Bridge:
         candidates = []
         if pair in self.cfg.symbol_map:
             candidates.append(self.cfg.symbol_map[pair])
-        candidates += [base + self.cfg.symbol_suffix, base]
+        # HFM menamai crypto dengan awalan '#': BTC/USD → #BTCUSD
+        candidates += [base + self.cfg.symbol_suffix, base, "#" + base]
         for name in candidates:
             info = self.mt5.symbol_info(name)
             if info is not None:

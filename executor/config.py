@@ -15,11 +15,14 @@ if ROOT not in sys.path:
 
 def _load_env() -> None:
     try:
-        from dotenv import load_dotenv
+        from dotenv import dotenv_values, load_dotenv
     except ImportError:
         return
     load_dotenv(os.path.join(ROOT, ".env"))            # Upstash / Telegram (kalau ada)
-    load_dotenv(os.path.join(ROOT, ".env.executor"), override=True)
+    # .env.executor menang, tapi baris yang dibiarkan kosong tidak menimpa nilai dari .env
+    for k, v in dotenv_values(os.path.join(ROOT, ".env.executor")).items():
+        if v is not None and v.strip():
+            os.environ[k] = v.strip()
 
 
 def _f(name: str, default: float) -> float:
