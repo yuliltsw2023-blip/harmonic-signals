@@ -32,6 +32,23 @@ Yang dipasang eksekutor per sinyal (harmonic tahap SIAPKAN ORDER / MASUK ZONA, d
    **tanpa spasi**: `HFMarketsGlobal-Demo4`. Tombol Algo Trading bisa dinyalakan dengan Ctrl+E di jendela MT5.
 6. Jalan terus: klik dua kali `executor\run_executor.bat` (restart sendiri kalau crash). Supaya jalan otomatis saat PC nyala: Task Scheduler → Create Basic Task → trigger "When I log on" → action start program `executor\run_executor.bat`. PC jangan sleep (Power options).
 
+## Versi Expert Advisor (MQL5) — untuk Mac mini / VPS tanpa Python
+
+`executor/mql5/HarmonicExecutor.mq5` = logika yang sama, jalan di dalam MT5 (Windows maupun MT5 for Mac), tanpa Python.
+Baca antrean Upstash lewat WebRequest, pasang limit/market, lot dari risiko %, 50/50 TP1/TP2 (komentar
+`HS<hash>|TP1|<jam kedaluwarsa>`), SL→BE setelah TP1 untung, cancel, batas setup & rugi harian, notifikasi Telegram
+"🤖 MT5 EA". Kill switch: key Upstash `mt5:halt` = 1 atau Global Variable terminal `HS_HALT` = 1 (F3 di MT5).
+
+Pasang:
+1. Salin `HarmonicExecutor.mq5` ke folder data terminal `MQL5\Experts\` (File → Open Data Folder), compile di MetaEditor (F7).
+2. Tools → Options → Expert Advisors: centang **Allow WebRequest for listed URL** dan tambahkan
+   `https://<akun>.upstash.io` (host dari UPSTASH_REDIS_REST_URL) dan `https://api.telegram.org`. Tombol Algo Trading ON.
+3. Buka satu chart apa saja (mis. EURUSD H1), Navigator → Expert Advisors → HarmonicExecutor → drag ke chart.
+   Tab Inputs → Load → pilih preset `HarmonicExecutor.set` (berisi URL/token Upstash & Telegram) → OK.
+4. Tab Experts di bawah harus menampilkan "[HS] ..." dan Telegram dapat pesan "EA jalan".
+5. **Hanya satu eksekutor yang boleh jalan** (EA ini ATAU `python -m executor.run`), kalau tidak order dobel.
+Mac: MT5 for Mac dari HFM, langkah sama; System Settings → Energy → matikan sleep; MT5 masuk Login Items.
+
 ## Cara stop / kontrol
 - Berhenti sementara pasang order baru: buat file kosong `executor\STOP` (hapus untuk lanjut), atau dari HP: console Upstash → set key `mt5:halt` = `1`.
 - Pending/posisi yang sudah ada tetap harus dikelola manual kalau eksekutor dimatikan.
