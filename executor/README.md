@@ -25,7 +25,11 @@ Yang dipasang eksekutor per sinyal (harmonic tahap SIAPKAN ORDER / MASUK ZONA, d
    ```bat
    python -m executor.run --once
    ```
-   Harus muncul akun, saldo, dan mapping simbol (`EUR/USD → EURUSD`, `XAU/USD → XAUUSD`). Kalau simbol tidak ketemu, isi `MT5_SYMBOL_MAP` di `.env.executor`.
+   Harus muncul akun, saldo, dan mapping simbol (`EUR/USD → EURUSD`, `XAU/USD → XAUUSD`, crypto HFM berawalan `#`:
+   `BTC/USD → #BTCUSD`). Kalau simbol tidak ketemu, isi `MT5_SYMBOL_MAP` di `.env.executor`. Cek cepat tanpa sentuh
+   antrean: `python -m executor.run --check`.
+   Catatan HFM (23 Sep 2026): nama server di aplikasi HFM tertulis "HFMarketsGlobal-Demo 4", tapi di MT5 harus
+   **tanpa spasi**: `HFMarketsGlobal-Demo4`. Tombol Algo Trading bisa dinyalakan dengan Ctrl+E di jendela MT5.
 6. Jalan terus: klik dua kali `executor\run_executor.bat` (restart sendiri kalau crash). Supaya jalan otomatis saat PC nyala: Task Scheduler → Create Basic Task → trigger "When I log on" → action start program `executor\run_executor.bat`. PC jangan sleep (Power options).
 
 ## Cara stop / kontrol
