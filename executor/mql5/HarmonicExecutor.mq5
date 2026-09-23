@@ -31,6 +31,8 @@ input int    InpDeviation     = 20;        // Slippage market order (point)
 input string InpSymbolSuffix  = "";        // Suffix simbol broker (mis. .z)
 input string InpQueueKey      = "mt5:queue";
 input string InpHaltKey       = "mt5:halt";
+input string InpReportHours   = "2,14";    // Jam laporan portofolio (UTC, koma) — 2,14 = 09:00 & 21:00 WIB
+input string InpTelegramAdmin = "";        // Telegram user id tambahan yang boleh kirim perintah (opsional)
 
 CTrade   trade;
 long     g_haltDay = 0;          // yyyymmdd saat batas rugi harian kena
@@ -96,13 +98,27 @@ bool HttpPost(const string url, const string headers, const string body, string 
    return true;
   }
 
+void TgSend(const string chatId, const string text)
+  {
+   if(g_tgToken == "" || chatId == "") return;
+   string body = "{\"chat_id\":\"" + chatId + "\",\"text\":\"" + JsonEscape(text) + "\",\"parse_mode\":\"HTML\"}";
+   string out;
+   HttpPost("https://api.telegram.org/bot" + g_tgToken + "/sendMessage", "Content-Type: application/json\r\n", body, out);
+  }
+
 void Notify(const string text)
   {
    Log(text);
-   if(g_tgToken == "" || g_tgChat == "") return;
-   string body = "{\"chat_id\":\"" + g_tgChat + "\",\"text\":\"" + JsonEscape("🤖 MT5 EA · " + text) + "\",\"parse_mode\":\"HTML\"}";
-   string out;
-   HttpPost("https://api.telegram.org/bot" + g_tgToken + "/sendMessage", "Content-Type: application/json\r\n", body, out);
+   TgSend(g_tgChat, "🤖 MT5 EA · " + text);
+  }
+
+bool HttpGet(const string url, string &out, int timeout = 8000)
+  {
+   char data[]; char result[]; string rh;
+   ResetLastError();
+   int code = WebRequest("GET", url, "", timeout, data, result, rh);
+   out = CharArrayToString(result, 0, WHOLE_ARRAY, CP_UTF8);
+   return (code >= 200 && code < 300);
   }
 
 //+------------------------------------------------------------------+
@@ -463,10 +479,159 @@ string HaltReason()
   }
 
 //+------------------------------------------------------------------+
+//| Laporan portofolio                                                 |
+//+------------------------------------------------------------------+
+string Money(double v) { return DoubleToString(v, 2); }
+
+double PnlSince(datetime from)
+  {
+   if(!HistorySelect(from, TimeCurrent() + 86400)) return 0.0;
+   double total = 0.0;
+   for(int d = HistoryDealsTotal() - 1; d >= 0; d--)
+     {
+      ulong dt = HistoryDealGetTicket(d);
+      if(dt == 0 || HistoryDealGetInteger(dt, DEAL_ENTRY) != DEAL_ENTRY_OUT) continue;
+      total += HistoryDealGetDouble(dt, DEAL_PROFIT) + HistoryDealGetDouble(dt, DEAL_COMMISSION) + HistoryDealGetDouble(dt, DEAL_SWAP);
+     }
+   return total;
+  }
+
+string BuildReport(const string title)
+  {
+   string cur = AccountInfoString(ACCOUNT_CURRENCY);
+   double bal = AccountInfoDouble(ACCOUNT_BALANCE), eq = AccountInfoDouble(ACCOUNT_EQUITY);
+   datetime day = TimeCurrent() - (TimeCurrent() % 86400);
+   string s = "📊 <b>" + title + "</b> · akun " + IntegerToString((int)AccountInfoInteger(ACCOUNT_LOGIN)) +
+              (AccountInfoInteger(ACCOUNT_TRADE_MODE) == ACCOUNT_TRADE_MODE_DEMO ? " (demo)" : " (LIVE)") + "\n";
+   s += "Saldo <b>" + Money(bal) + "</b> · Ekuitas <b>" + Money(eq) + "</b> · Floating " + (eq - bal >= 0 ? "+" : "") + Money(eq - bal) + " " + cur + "\n";
+   double p1 = PnlSince(day), p7 = PnlSince(day - 6 * 86400);
+   s += "Realized hari ini " + (p1 >= 0 ? "+" : "") + Money(p1) + " · 7 hari " + (p7 >= 0 ? "+" : "") + Money(p7) + " " + cur + "\n";
+   int np = 0;
+   string pos = "";
+   for(int i = 0; i < PositionsTotal(); i++)
+     {
+      ulong t = PositionGetTicket(i);
+      if(t == 0) continue;
+      string sym = PositionGetString(POSITION_SYMBOL);
+      int dg = (int)SymbolInfoInteger(sym, SYMBOL_DIGITS);
+      double pr = PositionGetDouble(POSITION_PROFIT) + PositionGetDouble(POSITION_SWAP);
+      pos += "• " + sym + " " + (PositionGetInteger(POSITION_TYPE) == POSITION_TYPE_BUY ? "BUY" : "SELL") + " " +
+             DoubleToString(PositionGetDouble(POSITION_VOLUME), 2) + " @" + DoubleToString(PositionGetDouble(POSITION_PRICE_OPEN), dg) +
+             " → " + DoubleToString(PositionGetDouble(POSITION_PRICE_CURRENT), dg) + " (" + (pr >= 0 ? "+" : "") + Money(pr) + ")" +
+             " SL " + DoubleToString(PositionGetDouble(POSITION_SL), dg) + " TP " + DoubleToString(PositionGetDouble(POSITION_TP), dg) + "\n";
+      np++;
+     }
+   s += "Posisi terbuka: <b>" + IntegerToString(np) + "</b>\n" + pos;
+   int no = 0;
+   string ord = "";
+   for(int i = 0; i < OrdersTotal(); i++)
+     {
+      ulong t = OrderGetTicket(i);
+      if(t == 0) continue;
+      string sym = OrderGetString(ORDER_SYMBOL);
+      int dg = (int)SymbolInfoInteger(sym, SYMBOL_DIGITS);
+      long ty = OrderGetInteger(ORDER_TYPE);
+      ord += "• " + sym + " " + (ty == ORDER_TYPE_BUY_LIMIT ? "BUY LIMIT" : ty == ORDER_TYPE_SELL_LIMIT ? "SELL LIMIT" : "pending") + " " +
+             DoubleToString(OrderGetDouble(ORDER_VOLUME_CURRENT), 2) + " @" + DoubleToString(OrderGetDouble(ORDER_PRICE_OPEN), dg) +
+             " SL " + DoubleToString(OrderGetDouble(ORDER_SL), dg) + " TP " + DoubleToString(OrderGetDouble(ORDER_TP), dg) + "\n";
+      no++;
+     }
+   s += "Pending: <b>" + IntegerToString(no) + "</b>\n" + ord;
+   string halt = HaltReason();
+   s += "EA: " + (halt == "" ? "✅ aktif" : "⛔ OFF (" + halt + ")") + " · Algo Trading " + (TerminalInfoInteger(TERMINAL_TRADE_ALLOWED) ? "ON" : "OFF") +
+        " · " + (TerminalInfoInteger(TERMINAL_CONNECTED) ? "terhubung" : "PUTUS") + "\n";
+   s += "<i>" + TimeToString(TimeGMT(), TIME_DATE | TIME_MINUTES) + " UTC</i>";
+   return s;
+  }
+
+bool HourListed(int hour)
+  {
+   string parts[];
+   int n = StringSplit(InpReportHours, ',', parts);
+   for(int i = 0; i < n; i++) { string p = parts[i]; StringTrimLeft(p); StringTrimRight(p); if(p != "" && (int)StringToInteger(p) == hour) return true; }
+   return false;
+  }
+
+void MaybeReport()
+  {
+   MqlDateTime g; TimeToStruct(TimeGMT(), g);
+   long key = (long)g.year * 100000 + g.day_of_year * 100 + g.hour;
+   long last = GlobalVariableCheck("HS_LAST_REPORT") ? (long)GlobalVariableGet("HS_LAST_REPORT") : 0;
+   if(!HourListed(g.hour) || key == last) return;
+   GlobalVariableSet("HS_LAST_REPORT", (double)key);
+   TgSend(g_tgChat, BuildReport("Laporan portofolio"));
+  }
+
+//+------------------------------------------------------------------+
+//| Perintah Telegram: /status /off /on /cancel /help                  |
+//| Diterima dari channel (g_tgChat) atau user id InpTelegramAdmin.    |
+//+------------------------------------------------------------------+
+void SetHalt(bool on)
+  {
+   if(on) GlobalVariableSet("HS_HALT", 1.0); else if(GlobalVariableCheck("HS_HALT")) GlobalVariableDel("HS_HALT");
+   string r; bool isNull;
+   Upstash(on ? "[\"SET\",\"" + InpHaltKey + "\",\"1\"]" : "[\"DEL\",\"" + InpHaltKey + "\"]", r, isNull);
+  }
+
+int CancelAll()
+  {
+   int n = 0;
+   for(int i = OrdersTotal() - 1; i >= 0; i--)
+     {
+      ulong t = OrderGetTicket(i);
+      if(t > 0 && OrderGetInteger(ORDER_MAGIC) == InpMagic && trade.OrderDelete(t)) n++;
+     }
+   return n;
+  }
+
+void HandleCommand(const string chatId, string text)
+  {
+   StringToLower(text); StringTrimLeft(text); StringTrimRight(text);
+   int sp = StringFind(text, " "); if(sp > 0) text = StringSubstr(text, 0, sp);
+   int at = StringFind(text, "@"); if(at > 0) text = StringSubstr(text, 0, at);
+   if(text == "/status" || text == "/laporan") TgSend(chatId, BuildReport("Status sekarang"));
+   else if(text == "/off" || text == "/stop") { SetHalt(true); TgSend(chatId, "⛔ EA OFF: tidak pasang order baru. Pending & posisi yang ada tetap jalan (pakai /cancel untuk hapus pending). /on untuk lanjut."); }
+   else if(text == "/on" || text == "/start") { SetHalt(false); TgSend(chatId, "✅ EA ON lagi: order baru dari sinyal akan dipasang."); }
+   else if(text == "/cancel") { int n = CancelAll(); TgSend(chatId, "❌ " + IntegerToString(n) + " pending order dibatalkan."); }
+   else if(text == "/help") TgSend(chatId, "Perintah: /status · /off · /on · /cancel · /help");
+  }
+
+void PollTelegram()
+  {
+   if(g_tgToken == "") return;
+   long offset = GlobalVariableCheck("HS_TG_OFFSET") ? (long)GlobalVariableGet("HS_TG_OFFSET") : 0;
+   string out;
+   if(!HttpGet("https://api.telegram.org/bot" + g_tgToken + "/getUpdates?timeout=0&limit=20&offset=" + IntegerToString(offset) +
+               "&allowed_updates=%5B%22message%22%2C%22channel_post%22%5D", out)) return;
+   int pos = 0;
+   while(true)
+     {
+      int p = StringFind(out, "\"update_id\":", pos);
+      if(p < 0) break;
+      int q = StringFind(out, "\"update_id\":", p + 12);
+      string chunk = StringSubstr(out, p, q < 0 ? StringLen(out) - p : q - p);
+      pos = (q < 0) ? StringLen(out) : q;
+      long uid = (long)StringToInteger(JGet(chunk, "update_id"));
+      if(uid >= offset) { offset = uid + 1; GlobalVariableSet("HS_TG_OFFSET", (double)offset); }
+      int c = StringFind(chunk, "\"chat\":{\"id\":");
+      if(c < 0) continue;
+      string chatId = JGet(StringSubstr(chunk, c + 8), "id");
+      string text = JGet(chunk, "text");
+      if(text == "" || StringGetCharacter(text, 0) != '/') continue;
+      bool allowed = (chatId == g_tgChat) || (InpTelegramAdmin != "" && chatId == InpTelegramAdmin);
+      if(!allowed) { TgSend(chatId, "Bukan admin. ID chat kamu: " + chatId); continue; }
+      Log("perintah Telegram: " + text);
+      HandleCommand(chatId, text);
+     }
+  }
+
+//+------------------------------------------------------------------+
 //| Loop                                                               |
 //+------------------------------------------------------------------+
 void Tick()
   {
+   PollTelegram();
+   MaybeReport();
    for(int k = 0; k < 50; k++)
      {
       string ev; bool isNull;

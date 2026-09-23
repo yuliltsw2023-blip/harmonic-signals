@@ -53,6 +53,14 @@ Pasang:
 6. **Hanya satu eksekutor yang boleh jalan** (EA ini ATAU `python -m executor.run`), kalau tidak order dobel.
 Mac: MT5 for Mac dari HFM, langkah sama; System Settings → Energy → matikan sleep; MT5 masuk Login Items.
 
+### Laporan & perintah lewat Telegram (EA)
+- Laporan portofolio otomatis pada jam `InpReportHours` (UTC, default `2,14` = 09:00 & 21:00 WIB): saldo, ekuitas,
+  floating, realized hari ini & 7 hari, posisi terbuka, pending, status EA.
+- Perintah diketik di channel Telegram (hanya admin channel yang bisa posting) atau dari user id `InpTelegramAdmin`:
+  `/status` laporan sekarang · `/off` berhenti pasang order baru (pending & posisi tetap) · `/on` lanjut ·
+  `/cancel` hapus semua pending EA · `/help`. Bot harus admin channel supaya menerima channel_post.
+- Update EA di Mac: salin `.ex5` baru ke `MQL5/Experts`, lalu **quit & buka lagi MT5** (EA tidak di-reload otomatis).
+
 ## Cara stop / kontrol
 - Berhenti sementara pasang order baru: buat file kosong `executor\STOP` (hapus untuk lanjut), atau dari HP: console Upstash → set key `mt5:halt` = `1`.
 - Pending/posisi yang sudah ada tetap harus dikelola manual kalau eksekutor dimatikan.
