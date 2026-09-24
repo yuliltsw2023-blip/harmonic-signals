@@ -12,8 +12,9 @@
 //|   https://<akun>.upstash.io  dan  https://api.telegram.org        |
 //+------------------------------------------------------------------+
 #property copyright "harmonic-signals"
-#property version   "1.00"
+#property version   "1.10"
 #property strict
+#define HS_VERSION "v1.1 (laporan + perintah Telegram)"
 #include <Trade\Trade.mqh>
 
 input string InpUpstashUrl    = "";        // Upstash REST URL (https://xxx.upstash.io)
@@ -658,7 +659,7 @@ int OnInit()
    if(GlobalVariableCheck("HS_HALT_DAY")) g_haltDay = (long)GlobalVariableGet("HS_HALT_DAY");
    if(!TerminalInfoInteger(TERMINAL_TRADE_ALLOWED)) Log("Tombol Algo Trading OFF — order tidak akan masuk sampai dinyalakan");
    EventSetTimer(MathMax(5, InpPollSec));
-   Notify("EA jalan · akun " + IntegerToString((int)AccountInfoInteger(ACCOUNT_LOGIN)) + " · ekuitas " +
+   Notify("EA " + HS_VERSION + " jalan · akun " + IntegerToString((int)AccountInfoInteger(ACCOUNT_LOGIN)) + " · ekuitas " +
           DoubleToString(AccountInfoDouble(ACCOUNT_EQUITY), 2) + " " + AccountInfoString(ACCOUNT_CURRENCY) +
           " · risiko " + DoubleToString(InpRiskPct, 1) + "% · antrean " + InpQueueKey);
    return INIT_SUCCEEDED;
