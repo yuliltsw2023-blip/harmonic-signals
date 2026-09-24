@@ -125,6 +125,15 @@ POC_SL_ATR = {"forex": 0.2, "metal": 0.2, "crypto": 0.4, "stock_us": 0.3, "stock
 HTF_OF = {"M15": "1h", "M30": "4h", "H1": "4h", "H4": "1day", "D1": "1week"}
 HTF_OUTPUTSIZE = 120
 
+# --- Knob khusus backtest (lib/backtest.py) — tidak dipakai scanner live ---------
+# BT_EXIT_R > 0: satu posisi penuh keluar di entry ± BT_EXIT_R × jarak SL
+# (mengganti 50/50 TP1-TP2 + BE). BT_SL_WIDEN_ATR > 0: SL digeser menjauh
+# sebesar N × ATR14 saat order dipasang. Spread per asset (fraksi harga) untuk
+# kolom r_net: forex 1 pip di 1.0000 = 0.0001, XAU ≈ 0.30 USD, crypto 0.05 %.
+BT_EXIT_R = 0.0
+BT_SL_WIDEN_ATR = 0.0
+BT_SPREAD = {"forex": 0.0001, "metal": 0.00009, "crypto": 0.0005, "stock_us": 0.0003, "stock_idx": 0.002}
+
 # --- Filter konflik antar-timeframe (lib/mtf.py, 24 Sep 2026) -----------------
 # TF satu tingkat di bawah TF sinyal untuk cek struktur swing (HH/HL vs LH/LL).
 # Di-fetch lazy (+1 request per kandidat yang lolos pre-grade) hanya kalau filter aktif.

@@ -26,13 +26,15 @@ from lib.backtest import PairBacktest, TF_INTERVAL, group_summary, load_history,
 BASE_FIX = dict(CLOSED_CANDLE_ONLY=True, SETUP_ID_BY_C=True,
                 POC_CANCEL_ON_STAGE=("broken", "continued", "left_va", "below_va"),
                 PRZ_BAND_XA=0.0, POC_MIN_LEG_ATR=0.0, POC_TIMEFRAMES=("H1", "H4", "D1"),
-                MTF_CONFLICT_FILTER=False, MTF_OWN_TREND=False)
+                MTF_CONFLICT_FILTER=False, MTF_OWN_TREND=False, BT_EXIT_R=0.0, BT_SL_WIDEN_ATR=0.0)
+V9 = dict(HARMONIC_EXEC_MODE="limit", POC_EXEC_MODE="limit", EXEC_MIN_GRADE="B", EXEC_SESSION_UTC=(),
+          POC_TIMEFRAMES=("H1", "H4"), MTF_CONFLICT_FILTER=True)
 VARIANTS = {
     # persis perilaku live sampai 24 Sep 2026
     "v0_live": dict(CLOSED_CANDLE_ONLY=False, HARMONIC_EXEC_MODE="limit", POC_EXEC_MODE="limit",
                     EXEC_MIN_GRADE="B", EXEC_SESSION_UTC=(), SETUP_ID_BY_C=False, POC_CANCEL_ON_STAGE=(),
                     PRZ_BAND_XA=0.0, POC_MIN_LEG_ATR=0.0, POC_TIMEFRAMES=("H1", "H4", "D1"),
-                    MTF_CONFLICT_FILTER=False, MTF_OWN_TREND=False),
+                    MTF_CONFLICT_FILTER=False, MTF_OWN_TREND=False, BT_EXIT_R=0.0, BT_SL_WIDEN_ATR=0.0),
     # bug fix saja: candle closed-only, satu ID per pattern, cancel POC saat struktur patah
     "v1_fix": dict(BASE_FIX, HARMONIC_EXEC_MODE="limit", POC_EXEC_MODE="limit", EXEC_MIN_GRADE="B", EXEC_SESSION_UTC=()),
     # + entry hanya setelah konfirmasi (D pivot / candle reaksi), market, SL di luar D / ekstrem pullback
@@ -59,6 +61,11 @@ VARIANTS = {
     "v10_conflict_ltf_own": dict(BASE_FIX, HARMONIC_EXEC_MODE="limit", POC_EXEC_MODE="limit", EXEC_MIN_GRADE="B",
                                  EXEC_SESSION_UTC=(), POC_TIMEFRAMES=("H1", "H4"), MTF_CONFLICT_FILTER=True,
                                  MTF_OWN_TREND=True),
+    # Eksperimen exit (di atas v9): satu posisi penuh keluar di 0.5R / 1R, SL asli atau dilebarkan 2×ATR
+    "v11_exit_0.5R": dict(BASE_FIX, **V9, BT_EXIT_R=0.5),
+    "v12_exit_1R": dict(BASE_FIX, **V9, BT_EXIT_R=1.0),
+    "v13_exit_0.5R_sl2atr": dict(BASE_FIX, **V9, BT_EXIT_R=0.5, BT_SL_WIDEN_ATR=2.0),
+    "v14_exit_1R_sl2atr": dict(BASE_FIX, **V9, BT_EXIT_R=1.0, BT_SL_WIDEN_ATR=2.0),
     # v6 + hanya Grade A + sesi London–NY
     "v7_confirmed_struct_A_session": dict(BASE_FIX, HARMONIC_EXEC_MODE="confirmed", POC_EXEC_MODE="confirmed",
                                           EXEC_MIN_GRADE="A", EXEC_SESSION_UTC=(6, 20), PRZ_BAND_XA=0.06, POC_MIN_LEG_ATR=2.0),

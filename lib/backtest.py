@@ -23,7 +23,8 @@ import os
 from datetime import date, datetime, timedelta, timezone
 
 from config import settings
-from config.pairs import market_247
+from config.pairs import asset_class, market_247, pip_size
+from lib.pivots import atr
 from lib.exec_rules import INTERVAL_SEC, exec_grade_ok, harmonic_confirmed, parse_dt, poc_confirmed, session_ok
 from lib.grading import htf_alignment, htf_trend, rule_grade
 from lib.mtf import attach_mtf
@@ -229,8 +230,12 @@ class PairBacktest:
             buy = ev["side"] == "buy"
             px = bar["open"]
             market = ev.get("order") == "market" or (buy and px <= ev["entry"]) or ((not buy) and px >= ev["entry"])
+            sl = ev["sl"]
+            if settings.BT_SL_WIDEN_ATR > 0:
+                a = atr(self.bars[max(0, i - 30):i])
+                sl = sl - settings.BT_SL_WIDEN_ATR * a if buy else sl + settings.BT_SL_WIDEN_ATR * a
             self.pending[sid] = {
-                **ev, **meta, "buy": buy, "market": market, "placed_i": i, "placed_ts": now_ts,
+                **ev, **meta, "sl": sl, "buy": buy, "market": market, "placed_i": i, "placed_ts": now_ts,
                 "expires_ts": now_ts + ev.get("expires_hours", 24) * 3600,
             }
             self.stats["placed"] += 1
@@ -253,10 +258,14 @@ class PairBacktest:
                     continue
                 if o["market"]:
                     self.stats["market_fills"] += 1
+                if settings.BT_EXIT_R > 0:
+                    sign = 1 if o["buy"] else -1
+                    legs = {"tpR": {"sl": o["sl"], "tp": fill + sign * settings.BT_EXIT_R * risk, "open": True, "w": 1.0}}
+                else:
+                    legs = {"tp1": {"sl": o["sl"], "tp": o["tp1"], "open": True, "w": 0.5},
+                            "tp2": {"sl": o["sl"], "tp": o["tp2"], "open": True, "w": 0.5}}
                 self.positions[sid] = {
-                    **o, "fill": fill, "fill_i": i, "fill_ts": now_ts, "risk": risk, "r": 0.0,
-                    "legs": {"tp1": {"sl": o["sl"], "tp": o["tp1"], "open": True},
-                             "tp2": {"sl": o["sl"], "tp": o["tp2"], "open": True}},
+                    **o, "fill": fill, "fill_i": i, "fill_ts": now_ts, "risk": risk, "r": 0.0, "legs": legs,
                 }
                 del self.pending[sid]
             elif now_ts >= o["expires_ts"]:
@@ -271,21 +280,30 @@ class PairBacktest:
                 sl, tp = leg["sl"], leg["tp"]
                 hit_sl = l_ <= sl if buy else h_ >= sl
                 hit_tp = h_ >= tp if buy else l_ <= tp
+                # Bar pengisian limit: urutan intrabar tidak diketahui (high bisa terjadi
+                # sebelum harga turun ke limit) → TP tidak dihitung di bar itu, hanya SL.
+                if i == p["fill_i"] and not p["market"]:
+                    hit_tp = False
+                w = leg.get("w", 0.5)
                 if hit_sl:
                     exit_px = min(o_, sl) if buy else max(o_, sl)
-                    p["r"] += 0.5 * ((exit_px - p["fill"]) if buy else (p["fill"] - exit_px)) / p["risk"]
+                    p["r"] += w * ((exit_px - p["fill"]) if buy else (p["fill"] - exit_px)) / p["risk"]
                     leg["open"] = False
                     leg["exit"] = "sl" if abs(sl - p["sl"]) > 1e-12 or True else "sl"
                     leg["exit_kind"] = "be" if abs(sl - p["fill"]) < 1e-12 else "sl"
                 elif hit_tp:
                     exit_px = max(o_, tp) if buy else min(o_, tp)
-                    p["r"] += 0.5 * abs(exit_px - p["fill"]) / p["risk"]
+                    p["r"] += w * abs(exit_px - p["fill"]) / p["risk"]
                     leg["open"] = False
                     leg["exit_kind"] = name
                     if name == "tp1" and p["legs"]["tp2"]["open"]:
                         p["legs"]["tp2"]["sl"] = p["fill"]  # SL → BE
             if not any(lg["open"] for lg in p["legs"].values()):
                 fill_dt = datetime.fromtimestamp(p["fill_ts"], timezone.utc)
+                spread = settings.BT_SPREAD.get(asset_class(self.pair), 0.0001)
+                if asset_class(self.pair) == "forex":
+                    spread = pip_size(self.pair)          # 1 pip
+                cost_r = (spread * (p["fill"] if asset_class(self.pair) != "forex" else 1.0)) / p["risk"] if p["risk"] > 0 else 0.0
                 self.trades.append({
                     "id": sid, "pair": self.pair, "tf": self.tf, "kind": p["kind"], "pattern": p["pattern"],
                     "direction": p["direction"], "grade": p.get("grade"), "stage": p.get("stage"),
@@ -299,7 +317,7 @@ class PairBacktest:
                     "exit": datetime.fromtimestamp(now_ts, timezone.utc).isoformat(timespec="minutes"),
                     "exit_ts": now_ts, "bars_held": i - p["fill_i"],
                     "legs": {k: v.get("exit_kind") for k, v in p["legs"].items()},
-                    "r": round(p["r"], 4),
+                    "r": round(p["r"], 4), "cost_r": round(cost_r, 4), "r_net": round(p["r"] - cost_r, 4),
                     "result": "win" if p["r"] > 1e-9 else ("loss" if p["r"] < -1e-9 else "flat"),
                 })
                 del self.positions[sid]
@@ -334,11 +352,14 @@ def summarize(trades: list[dict]) -> dict:
         eq += t["r"]
         peak = max(peak, eq)
         dd = max(dd, peak - eq)
+    net = [t.get("r_net", t["r"]) for t in trades]
     return {
         "n": n, "win%": round(100 * len(wins) / n, 1), "avgR": round(sum(t["r"] for t in trades) / n, 3),
         "sumR": round(sum(t["r"] for t in trades), 1),
         "PF": round(sum(wins) / abs(sum(losses)), 2) if losses else float("inf"),
         "maxDD_R": round(dd, 1),
+        "netR": round(sum(net), 1), "netPF": round(sum(x for x in net if x > 0) / abs(sum(x for x in net if x < 0)), 2)
+        if any(x < 0 for x in net) else float("inf"),
     }
 
 
