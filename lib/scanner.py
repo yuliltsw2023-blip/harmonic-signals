@@ -17,9 +17,11 @@ from lib.pivots import swing_pivots
 from lib.poc import analyze_poc, poc_alignment, rule_grade_poc
 from lib.prz import construct_prz
 from lib.orders import harmonic_event, poc_event
-from lib.state import (backend_name, earlier_stage_signaled, is_already_signaled, mark_signaled,
-                       mt5_queue_enabled, push_order_event)
-from lib.telegram import send_left_notice, send_poc_signal, send_signal
+from lib.exec_rules import (exec_grade_ok, format_exec_notice, harmonic_confirmed, poc_confirmed, session_ok,
+                            split_closed)
+from lib.state import (backend_name, earlier_poc_stage_signaled, earlier_stage_signaled, is_already_signaled,
+                       mark_signaled, mt5_queue_enabled, push_order_event)
+from lib.telegram import send_left_notice, send_message, send_poc_signal, send_signal
 from lib.twelvedata import TwelveDataClient
 from lib.yahoo import YahooClient
 
@@ -77,7 +79,9 @@ def run_scan(timeframe: str, pairs: list[str] | None = None, dry_run: bool | Non
     htf_interval = settings.HTF_OF[timeframe]
     print(f"[start] {timeframe} scan · {len(pairs)} pair · DRY_RUN={dry_run} · "
           f"stages={','.join(settings.SIGNAL_STAGES)} · min R:R TP2={settings.MIN_RR_TP2_PREGRADE} · "
-          f"state={backend_name()} · model={settings.CLAUDE_MODEL}")
+          f"state={backend_name()} · model={settings.CLAUDE_MODEL} · closed_only={settings.CLOSED_CANDLE_ONLY} · "
+          f"exec harmonic={settings.HARMONIC_EXEC_MODE} poc={settings.POC_EXEC_MODE} min_grade={settings.EXEC_MIN_GRADE} "
+          f"session={settings.EXEC_SESSION_UTC or '-'}")
     scan_stamp = datetime.now(timezone.utc).strftime("%H:%M UTC")
 
     # Client dibuat lazy: scan saham (Yahoo) tidak butuh key Twelve Data.
@@ -91,12 +95,18 @@ def run_scan(timeframe: str, pairs: list[str] | None = None, dry_run: bool | Non
 
     stats = {k: 0 for k in ("pairs_scanned", "structures_matched", "skipped_pregrade",
                             "skipped_duplicate", "stage_off", "left_notices", "grade_c",
-                            "signals_sent", "poc_candidates", "poc_skipped", "poc_sent", "mt5_events")}
+                            "signals_sent", "poc_candidates", "poc_skipped", "poc_sent", "mt5_events",
+                            "exec_confirmed", "exec_gate_skip")}
     queue_on = mt5_queue_enabled() and not dry_run
 
-    def queue(ev: dict, pair: str) -> None:
-        """Kirim event ke antrean eksekutor MT5 (saham tidak, HFM tidak punya IDX)."""
+    def queue(ev: dict, pair: str, grade: str | None = None) -> None:
+        """Kirim event ke antrean eksekutor MT5 (saham tidak, HFM tidak punya IDX).
+        Event "place" digate oleh EXEC_MIN_GRADE; cancel selalu lewat."""
         if not queue_on or is_stock(pair):
+            return
+        if ev.get("action") == "place" and not exec_grade_ok(grade or ev.get("grade")):
+            stats["exec_gate_skip"] += 1
+            print(f"[exec-gate] {ev['id']}: grade {grade or ev.get('grade')} < {settings.EXEC_MIN_GRADE}, tidak masuk antrean")
             return
         try:
             push_order_event(ev)
@@ -111,6 +121,11 @@ def run_scan(timeframe: str, pairs: list[str] | None = None, dry_run: bool | Non
             tdc = client_for(pair)
             candles = tdc.get_candles(pair, interval, outputsize=200)
             stats["pairs_scanned"] += 1
+            if settings.CLOSED_CANDLE_ONLY:
+                candles, forming = split_closed(candles, interval)
+                if forming is not None:
+                    print(f"[closed-only] {pair}: candle berjalan {forming['datetime']} dibuang, "
+                          f"analisis sampai {candles[-1]['datetime'] if candles else '-'}")
             if len(candles) < 50:
                 print(f"[warn] {pair}: hanya {len(candles)} candle, skip")
                 continue
@@ -132,6 +147,29 @@ def run_scan(timeframe: str, pairs: list[str] | None = None, dry_run: bool | Non
             for cand in cands:
                 cand["scan_datetime"] = scan_stamp
                 tag = f"{pair} {cand['pattern']} {cand['direction']} ({'proj' if cand['d_projected'] else 'done'}, {cand.get('stage')})"
+
+                # --- Mode confirmed: entry market saat D sudah pivot terkonfirmasi,
+                # independen dari dedup pesan (pesan approaching/in_prz mungkin sudah lewat).
+                if (settings.HARMONIC_EXEC_MODE == "confirmed" and queue_on and not cand["d_projected"]
+                        and cand.get("stage") in ("in_prz", "left")):
+                    ck = dict(cand, stage="confirmed")
+                    if not is_already_signaled(ck) and harmonic_confirmed(cand, candles):
+                        trend = htf_trend(get_htf()) if get_htf() else "neutral"
+                        cand["htf_timeframe"] = htf_interval
+                        cand["htf_trend"] = trend
+                        cand["htf_alignment"] = htf_alignment(cand, trend)
+                        rule_grade(cand)
+                        cgrade = grade_setup(cand)["grade"]
+                        if cgrade != "C" and exec_grade_ok(cgrade) and session_ok(pair, timeframe):
+                            queue(harmonic_event(cand, {"grade": cgrade}), pair, cgrade)
+                            mark_signaled(ck)
+                            send_message(format_exec_notice(cand, cgrade))
+                            stats["exec_confirmed"] += 1
+                            print(f"[exec-confirmed] {tag} Grade {cgrade} entry {cand['exec']['entry']} SL {cand['exec']['sl']}")
+                        else:
+                            print(f"[exec-confirmed-skip] {tag}: grade {cgrade} / sesi {session_ok(pair, timeframe)}")
+                            mark_signaled(ck)
+
                 if cand["pre_grade"] == "FAIL":
                     stats["skipped_pregrade"] += 1
                     print(f"[pregrade-fail] {tag}: {cand['pre_grade_reason']}")
@@ -182,16 +220,46 @@ def run_scan(timeframe: str, pairs: list[str] | None = None, dry_run: bool | Non
                 else:
                     send_signal(cand, grade, candles)
                     mark_signaled(cand)
-                    queue(harmonic_event(cand, grade), pair)
+                    if settings.HARMONIC_EXEC_MODE == "limit":
+                        queue(harmonic_event(cand, grade), pair, grade["grade"])
                     print(f"[sent] {tag} Grade {grade['grade']}")
                 stats["signals_sent"] += 1
 
             # --- Strategi kedua: POC pullback (candle yang sama, 0 request tambahan)
-            if settings.POC_ENABLED:
+            # POC D1 forex/crypto (profile TPO) nonaktif per backtest; saham (volume asli) tetap.
+            if settings.POC_ENABLED and (timeframe in settings.POC_TIMEFRAMES or is_stock(pair)):
                 poc = analyze_poc(pair, timeframe, candles)
                 if poc is not None:
                     poc["scan_datetime"] = scan_stamp
                     ptag = f"{pair} POC {poc['direction']} [{poc['stage']}]"
+
+                    # Struktur berubah sebelum limit terisi → batalkan pending (sekali).
+                    if queue_on and poc["stage"] in settings.POC_CANCEL_ON_STAGE and earlier_poc_stage_signaled(poc):
+                        cancel = dict(poc, stage="cancel")
+                        if not is_already_signaled(cancel):
+                            queue(poc_event(poc, action="cancel"), pair)
+                            mark_signaled(cancel)
+                            print(f"[poc-cancel] {ptag}")
+
+                    # Mode confirmed: entry market setelah pullback ke POC + candle reaksi.
+                    if settings.POC_EXEC_MODE == "confirmed" and queue_on:
+                        ck = dict(poc, stage="confirmed")
+                        if not is_already_signaled(ck) and poc_confirmed(poc, candles):
+                            trend = htf_trend(get_htf()) if get_htf() else "neutral"
+                            poc["htf_timeframe"] = htf_interval
+                            poc["htf_trend"] = trend
+                            poc["htf_alignment"] = poc_alignment(poc, trend)
+                            cg = rule_grade_poc(poc)["grade"]
+                            if cg != "C" and exec_grade_ok(cg) and session_ok(pair, timeframe):
+                                queue(poc_event(poc), pair, cg)
+                                mark_signaled(ck)
+                                send_message(format_exec_notice(poc, cg))
+                                stats["exec_confirmed"] += 1
+                                print(f"[exec-confirmed] {ptag} Grade {cg} entry {poc['exec']['entry']} SL {poc['exec']['sl']}")
+                            else:
+                                print(f"[exec-confirmed-skip] {ptag}: grade {cg} / sesi {session_ok(pair, timeframe)}")
+                                mark_signaled(ck)
+
                     if poc["pre_grade"] == "FAIL":
                         stats["poc_skipped"] += 1
                         print(f"[poc-skip] {ptag}: {poc['pre_grade_reason']}")
@@ -214,7 +282,8 @@ def run_scan(timeframe: str, pairs: list[str] | None = None, dry_run: bool | Non
                         else:
                             send_poc_signal(poc, candles)
                             mark_signaled(poc)
-                            queue(poc_event(poc), pair)
+                            if settings.POC_EXEC_MODE == "limit":
+                                queue(poc_event(poc), pair, g["grade"])
                             print(f"[sent] {ptag} Grade {g['grade']}")
                             stats["poc_sent"] += 1
 

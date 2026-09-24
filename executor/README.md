@@ -70,3 +70,12 @@ Mac: MT5 for Mac dari HFM, langkah sama; System Settings → Energy → matikan 
 - Jalankan di **demo minimal 1 bulan**. Cek: order masuk di harga yang benar, lot sesuai risiko, SL/TP benar, breakeven jalan.
 - Eksekutor cuma jalan kalau PC + terminal MT5 nyala. PC mati = order baru tidak masuk (order yang sudah terpasang tetap hidup di server broker).
 - Spread HFM saat pasar tipis (Asia session, berita) bisa bikin SL kena lebih cepat dari hitungan scanner.
+
+## Update 24 Sep 2026 — WAJIB compile ulang EA
+- Event antrean punya field baru `order` (`limit` | `market`) dan `exec_mode`. `market` dipakai mode
+  `*_EXEC_MODE=confirmed`: EA/bridge langsung market, lot dihitung dari harga isi sebenarnya, dan
+  **skip** kalau harga sudah lari > `InpMaxSlipR` (default 0.25 × jarak SL) dari entry sinyal.
+- `HarmonicExecutor.mq5` berubah → salin `.ex5` baru / compile ulang (F7) dan pasang ulang EA di chart.
+- Backtest 24 Sep 2026 tidak menemukan edge pada aturan lama (PF 0.92, 886 trade). Default workflow
+  `MT5_QUEUE` sekarang `false`; nyalakan lagi hanya setelah paper trade memberi bukti. Rincian:
+  [docs/EVALUASI-2026-09-24.md](../docs/EVALUASI-2026-09-24.md).

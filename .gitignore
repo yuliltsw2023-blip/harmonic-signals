@@ -7,3 +7,8 @@ data/*.csv
 .env.executor
 executor/state.json
 executor/STOP
+
+# histori & hasil backtest (besar, bisa diunduh ulang)
+data/history/
+data/backtest/
+data/replay/

@@ -63,6 +63,9 @@ def construct_prz(cand: dict, pivots: list[dict] | None = None) -> dict:
     level utama pattern. Mengisi cand["prz"] dan mengembalikannya."""
     primary = cand["d_ideal"]
     band = primary * settings.asset_params(cand["pair"], cand.get("timeframe"))["prz_band"]
+    if settings.PRZ_BAND_XA > 0:
+        xa = abs(cand["points"]["A"]["price"] - cand["points"]["X"]["price"])
+        band = min(band, xa * settings.PRZ_BAND_XA)
     fib = _fib_levels(cand)
     structural = _structural_levels(cand, pivots)
 

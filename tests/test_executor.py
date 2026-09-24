@@ -168,3 +168,18 @@ def test_events_from_scanner_candidates():
                      "leg_date": "20260916", "poc": 1.88737, "sl": 1.89067, "val": 1.88356, "vah": 1.88957,
                      "tps": {"tp1": 1.88102, "tp2": 1.87851}, "grade": {"grade": "B"}})
     assert pev["id"] == "p:GBP/AUD:H1:20260916" and pev["side"] == "sell" and pev["entry"] == 1.88737
+
+
+def test_decide_order_type_honours_market_flag_and_slip_guard():
+    from executor.bridge import decide_order_type, slipped_too_far
+    # limit lama: buy market hanya kalau ask sudah <= entry
+    assert decide_order_type("buy", 1.1000, ask=1.1005, bid=1.1003) == "limit"
+    assert decide_order_type("buy", 1.1000, ask=1.0995, bid=1.0993) == "market"
+    # event confirmed: selalu market
+    assert decide_order_type("buy", 1.1000, ask=1.1005, bid=1.1003, order="market") == "market"
+    assert decide_order_type("sell", 1.1000, ask=1.0995, bid=1.0993, order="market") == "market"
+    # guard: harga lari > 25% jarak SL → skip; ke arah menguntungkan tidak dihitung
+    assert slipped_too_far("buy", 1.1000, 1.0960, px=1.1011)          # 11 pip > 25% × 40 pip
+    assert not slipped_too_far("buy", 1.1000, 1.0960, px=1.1009)
+    assert not slipped_too_far("buy", 1.1000, 1.0960, px=1.0990)      # lebih murah → boleh
+    assert slipped_too_far("sell", 1.1000, 1.1040, px=1.0989)

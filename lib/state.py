@@ -41,10 +41,18 @@ def poc_key(pair: str, timeframe: str, leg_date: str, stage: str) -> str:
     return f"poc:{pair.replace('/', '_')}:{timeframe}:{leg_date}:{stage}"
 
 
+def _hdate(cand: dict) -> str:
+    """Tanggal identitas setup harmonic: C (SETUP_ID_BY_C) atau D (lama)."""
+    from config import settings
+    if settings.SETUP_ID_BY_C and cand.get("c_date"):
+        return cand["c_date"]
+    return cand["d_date"]
+
+
 def _key(cand: dict) -> str:
     if cand.get("kind") == "poc":
         return poc_key(cand["pair"], cand["timeframe"], cand["leg_date"], cand["stage"])
-    return signal_key(cand["pair"], cand["timeframe"], cand["pattern"], cand["d_date"], cand.get("stage", "in_prz"))
+    return signal_key(cand["pair"], cand["timeframe"], cand["pattern"], _hdate(cand), cand.get("stage", "in_prz"))
 
 
 def _exists(key: str) -> bool:
@@ -60,8 +68,13 @@ def is_already_signaled(cand: dict) -> bool:
 
 def earlier_stage_signaled(cand: dict, stages=("approaching", "in_prz")) -> bool:
     """Apakah setup harmonic ini pernah dikirim di salah satu tahap `stages`."""
-    return any(_exists(signal_key(cand["pair"], cand["timeframe"], cand["pattern"], cand["d_date"], st))
+    return any(_exists(signal_key(cand["pair"], cand["timeframe"], cand["pattern"], _hdate(cand), st))
                for st in stages)
+
+
+def earlier_poc_stage_signaled(cand: dict, stages=("approaching", "in_va", "reacted")) -> bool:
+    """Apakah leg POC ini pernah dikirim di salah satu tahap `stages`."""
+    return any(_exists(poc_key(cand["pair"], cand["timeframe"], cand["leg_date"], st)) for st in stages)
 
 
 def mark_signaled(cand: dict, ttl_seconds: int = 604800) -> None:  # 7 hari

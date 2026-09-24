@@ -20,6 +20,11 @@ PRZ_BAND_PCT = 0.005
 # Structural level: swing high/low sebelumnya dianggap confluence kalau
 # masuk dalam PRZ band.
 STRUCTURAL_LOOKBACK_PIVOTS = 12
+# Band PRZ juga dibatasi relatif panjang XA: band = min(band harga, PRZ_BAND_XA × XA).
+# 0 = nonaktif (perilaku lama: band 0.5% harga bisa lebih lebar dari jarak D→X
+# sehingga PRZ "melewati" X dan confluence terhitung palsu — GBP/USD D1 23 Sep 2026:
+# PRZ 74 pip, confluence 12).
+PRZ_BAND_XA = float(os.environ.get("PRZ_BAND_XA", "0").strip() or 0)
 
 # --- Per asset class (skill: cross-asset adjustments) ------------------------
 # prz_band   : level dihitung convergent kalau dalam +/-band dari level utama
@@ -90,9 +95,18 @@ CLAUDE_MAX_TOKENS = 4096
 
 # --- POC Pullback screener (skill poc-pullback-entry) -------------------------
 POC_ENABLED = os.environ.get("POC_ENABLED", "true").lower() == "true"
+# Timeframe yang di-screen POC untuk forex/metal/crypto (profile TPO). D1 sengaja
+# tidak: backtest 24 Sep 2026 (31 simbol, 2021–2026) POC D1 = 172 trade, PF 0.74–0.78,
+# −24R; H1/H4 ≈ impas. Saham (Yahoo, volume asli, D1) tidak terpengaruh.
+POC_TIMEFRAMES = tuple(
+    t.strip().upper() for t in os.environ.get("POC_TIMEFRAMES", "H1,H4").split(",") if t.strip()
+)
 # Pivot N kiri/kanan per timeframe (skill: 5 untuk H1–H4, 3 untuk D1+).
 POC_PIVOT = {"M15": 5, "M30": 5, "H1": 5, "H4": 5, "D1": 3}
 POC_MIN_LEG_BARS = 8       # leg < ini → profile tidak representatif
+# Leg impulsif minimal dalam kelipatan ATR14 (0 = nonaktif). Leg yang lebih
+# pendek dari ini menghasilkan SL beberapa pip saja (backtest 24 Sep 2026).
+POC_MIN_LEG_ATR = float(os.environ.get("POC_MIN_LEG_ATR", "0").strip() or 0)
 POC_LEG_BARS_A = 10
 POC_BINS = 40
 POC_VA_PCT = 0.70
@@ -116,3 +130,49 @@ def env(name: str, default: str = "") -> str:
     """Baca env var dan buang spasi/enter di ujung — secret yang di-paste ke
     GitHub sering kebawa newline dan bikin 'Illegal header value'."""
     return os.environ.get(name, default).strip()
+
+
+# --- Aturan eksekusi tambahan (24 Sep 2026, evaluasi 2 SL AUD/CHF & GBP/USD) ------
+# Default di sini = perilaku LAMA kecuali dua bug fix (CLOSED_CANDLE_ONLY,
+# SETUP_ID_BY_C, POC_CANCEL_ON_STAGE). Nilai final dipilih dari hasil backtest
+# (scripts/backtest.py) dan bisa di-override lewat Variables GitHub Actions.
+def _flag(name: str, default: str) -> bool:
+    return os.environ.get(name, default).strip().lower() == "true"
+
+
+# Twelve Data mengembalikan candle yang SEDANG berjalan sebagai baris terakhir.
+# True = buang candle itu sebelum analisis: reaksi / stage / pivot hanya dari
+# candle yang sudah close (scan jalan 1 menit setelah close, jadi harga tetap segar).
+CLOSED_CANDLE_ONLY = _flag("CLOSED_CANDLE_ONLY", "true")
+# Harmonic → antrean MT5:
+#   "limit"     = pending limit di mid PRZ saat approaching/in_prz (lama).
+#   "confirmed" = hanya D yang sudah terkonfirmasi sebagai pivot (3 candle close
+#                 tidak menembus D), harga belum lari > CONFIRM_MAX_RUN_AD dari D,
+#                 entry market di harga sekarang, SL di luar D/tepi PRZ (bukan X).
+HARMONIC_EXEC_MODE = os.environ.get("HARMONIC_EXEC_MODE", "limit").strip().lower()
+# POC → antrean MT5:
+#   "limit"     = pending limit di POC saat approaching/in_va/reacted (lama).
+#   "confirmed" = pullback sudah menyentuh area POC dan candle close terakhir
+#                 menunjukkan reaksi (rejection wick / engulfing); entry market,
+#                 SL di luar ekstrem pullback.
+POC_EXEC_MODE = os.environ.get("POC_EXEC_MODE", "limit").strip().lower()
+# Grade minimum yang boleh masuk antrean MT5 (pesan Telegram tetap A & B).
+EXEC_MIN_GRADE = os.environ.get("EXEC_MIN_GRADE", "B").strip().upper()
+# Jam UTC [mulai, selesai) untuk event entry forex/metal di H1/H4 (London–NY).
+# Kosong = tanpa filter. Contoh "6,20".
+_sess = os.environ.get("EXEC_SESSION_UTC", "").strip()
+EXEC_SESSION_UTC = tuple(int(x) for x in _sess.split(",")) if _sess else ()
+# Buffer SL mode confirmed = max(kelipatan ATR14 ini, 5% XA untuk harmonic).
+CONFIRM_SL_ATR = {"forex": 0.2, "metal": 0.2, "crypto": 0.4, "stock_us": 0.3, "stock_idx": 0.3}
+# Entry confirmed harmonic masih layak kalau harga belum bergerak lebih dari
+# fraksi ini dari leg A–D (0.382 = belum sampai TP1).
+CONFIRM_MAX_RUN_AD = 0.382
+# POC confirmed: pullback dianggap "menyentuh POC" kalau ekstremnya masuk
+# fraksi ini dari jarak POC→VAH (bull) / POC→VAL (bear) dari POC.
+CONFIRM_POC_TOUCH = 0.25
+# ID setup & dedup harmonic memakai tanggal C (satu ID untuk projected & completed).
+# False = perilaku lama (projected pakai C, completed pakai D → setup yang sama
+# bisa dikirim & dipasang dua kali).
+SETUP_ID_BY_C = _flag("SETUP_ID_BY_C", "true")
+# Batalkan pending POC yang belum terisi kalau struktur berubah sebelum fill.
+POC_CANCEL_ON_STAGE = ("broken", "continued", "left_va", "below_va")

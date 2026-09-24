@@ -15,6 +15,14 @@ Twelve Data + GitHub Actions + Upstash).
 > ⚠️ Output adalah analisis edukatif + grade, bukan sinyal buy/sell dan tidak
 > ada auto-entry. Keputusan trading sepenuhnya tanggung jawab user.
 
+## Evaluasi 24 Sep 2026 — backtest & aturan eksekusi baru
+
+Dua SL (AUD/CHF POC H4, GBP/USD Bat D1) memicu evaluasi menyeluruh. Hasil, diagnosis,
+backtester (`scripts/backtest.py`), dan setting baru (`CLOSED_CANDLE_ONLY`, `SETUP_ID_BY_C`,
+`POC_TIMEFRAMES`, `HARMONIC_EXEC_MODE`, `POC_EXEC_MODE`, `EXEC_MIN_GRADE`, `EXEC_SESSION_UTC`,
+`PRZ_BAND_XA`, `POC_MIN_LEG_ATR`) ada di [docs/EVALUASI-2026-09-24.md](docs/EVALUASI-2026-09-24.md).
+**Auto-eksekusi MT5 sekarang opt-in** (Variable `MT5_QUEUE=true`), default `false`.
+
 ## Arsitektur
 
 ```

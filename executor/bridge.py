@@ -42,12 +42,23 @@ def lot_for_risk(equity: float, risk_pct: float, entry: float, sl: float,
     return round_lot(equity * risk_pct / 100 / loss_per_lot, step, vmin, vmax)
 
 
-def decide_order_type(side: str, entry: float, ask: float, bid: float) -> str:
+MAX_SLIP_R = 0.25   # event market: skip kalau harga sudah lari > fraksi ini dari jarak SL
+
+
+def decide_order_type(side: str, entry: float, ask: float, bid: float, order: str = "limit") -> str:
     """buy: kalau ask sudah ≤ entry → market (harga sudah di zona), kalau tidak buy limit.
-    sell: kalau bid sudah ≥ entry → market, kalau tidak sell limit."""
+    sell: kalau bid sudah ≥ entry → market, kalau tidak sell limit.
+    order="market" (mode confirmed) → selalu market."""
+    if order == "market":
+        return "market"
     if side == "buy":
         return "market" if ask <= entry else "limit"
     return "market" if bid >= entry else "limit"
+
+
+def slipped_too_far(side: str, entry: float, sl: float, px: float, max_r: float = MAX_SLIP_R) -> bool:
+    adverse = (px - entry) if side == "buy" else (entry - px)
+    return adverse > max_r * abs(entry - sl)
 
 
 class MT5Bridge:
@@ -117,6 +128,12 @@ class MT5Bridge:
         tick = mt5.symbol_info_tick(symbol)
         acc = mt5.account_info()
         side, entry, sl = ev["side"], float(ev["entry"]), float(ev["sl"])
+        if ev.get("order") == "market":
+            px = tick.ask if side == "buy" else tick.bid
+            if slipped_too_far(side, entry, sl, px):
+                return {"tickets": [], "lots": 0.0, "type": "-",
+                        "reason": f"harga sudah lari {abs(px - entry):.{info.digits}f} dari entry sinyal, tidak dikejar"}
+            entry = px   # lot & stop level dari harga isi sebenarnya
         risk = self.cfg.risk_for_grade(ev.get("grade", "B"))
         lot = lot_for_risk(acc.equity, risk, entry, sl, info.trade_tick_size, info.trade_tick_value,
                            info.volume_step, info.volume_min, info.volume_max)
@@ -128,7 +145,7 @@ class MT5Bridge:
         if abs(entry - sl) < min_dist or abs(entry - float(ev["tp1"])) < min_dist:
             return {"tickets": [], "lots": 0.0, "type": "-", "reason": f"SL/TP lebih dekat dari stop level broker ({info.trade_stops_level} point)"}
 
-        otype = decide_order_type(side, entry, tick.ask, tick.bid)
+        otype = decide_order_type(side, entry, tick.ask, tick.bid, ev.get("order", "limit"))
         legs = [("TP1", float(ev["tp1"])), ("TP2", float(ev["tp2"]))]
         half = round_lot(lot / 2, info.volume_step, info.volume_min, info.volume_max)
         if self.cfg.split_tp and half > 0:

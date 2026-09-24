@@ -246,6 +246,9 @@ def analyze_poc(pair: str, timeframe: str, candles: list[dict]) -> dict | None:
         reasons.append("struktur UNCLEAR (bukan HH+HL / LH+LL)")
     if leg_bars < settings.POC_MIN_LEG_BARS:
         reasons.append(f"leg {leg_bars} candle < {settings.POC_MIN_LEG_BARS}")
+    leg_atr = rng / atr(candles) if atr(candles) > 0 else 0.0
+    if settings.POC_MIN_LEG_ATR > 0 and leg_atr < settings.POC_MIN_LEG_ATR:
+        reasons.append(f"leg {leg_atr:.1f}×ATR < {settings.POC_MIN_LEG_ATR}")
     if stage not in SIGNAL_STAGES:
         reasons.append(f"stage {stage}")
     if not (settings.POC_DEPTH_MIN <= depth <= settings.POC_DEPTH_MAX):
@@ -276,6 +279,7 @@ def analyze_poc(pair: str, timeframe: str, candles: list[dict]) -> dict | None:
         "profile": prof,
         "poc": poc, "vah": vah, "val": val,
         "depth": depth,
+        "leg_atr": leg_atr,
         "depth_label": ("ideal" if settings.POC_DEPTH_IDEAL[0] <= depth <= settings.POC_DEPTH_IDEAL[1]
                         else "dangkal" if depth < settings.POC_DEPTH_IDEAL[0] else "dalam"),
         "stage": stage,

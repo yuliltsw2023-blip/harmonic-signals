@@ -29,6 +29,7 @@ input bool   InpSplitTP       = true;      // 50% lot TP1 + 50% lot TP2
 input int    InpPollSec       = 20;        // Interval cek antrean (detik)
 input int    InpMagic         = 260917;    // Magic number
 input int    InpDeviation     = 20;        // Slippage market order (point)
+input double InpMaxSlipR      = 0.25;      // Event market: skip kalau harga sudah lari > fraksi ini dari jarak SL
 input string InpSymbolSuffix  = "";        // Suffix simbol broker (mis. .z)
 input string InpQueueKey      = "mt5:queue";
 input string InpHaltKey       = "mt5:halt";
@@ -341,6 +342,16 @@ void Place(const string ev)
    string sym = ResolveSymbol(JGet(ev, "symbol"));
    if(sym == "") { Notify("⚠️ " + label + ": simbol tidak ada di broker"); return; }
    bool isBuy = (side == "buy");
+   double ask0 = SymbolInfoDouble(sym, SYMBOL_ASK), bid0 = SymbolInfoDouble(sym, SYMBOL_BID);
+   bool forceMarket = (JGet(ev, "order") == "market");   // mode confirmed: entry market di harga sekarang
+   if(forceMarket)
+     {
+      double px = isBuy ? ask0 : bid0;
+      double adverse = isBuy ? (px - entry) : (entry - px);
+      if(adverse > InpMaxSlipR * MathAbs(entry - sl))
+        { Notify("⏭️ " + label + ": harga sudah lari " + DoubleToString(adverse, (int)SymbolInfoInteger(sym, SYMBOL_DIGITS)) + " dari entry sinyal, tidak dikejar"); return; }
+      entry = px;   // lot & stop level dihitung dari harga isi sebenarnya
+     }
    double risk = (grade == "A") ? InpRiskPct : InpRiskPct * InpRiskBFactor;
    double lot = LotForRisk(sym, risk, entry, sl);
    if(lot <= 0) { Notify("⚠️ " + label + " tidak dipasang: SL terlalu jauh untuk lot minimal"); return; }
@@ -350,7 +361,7 @@ void Place(const string ev)
    if(MathAbs(entry - sl) < minDist || MathAbs(entry - tp1) < minDist) { Notify("⚠️ " + label + ": SL/TP lebih dekat dari stop level broker"); return; }
 
    double ask = SymbolInfoDouble(sym, SYMBOL_ASK), bid = SymbolInfoDouble(sym, SYMBOL_BID);
-   bool market = isBuy ? (ask <= entry) : (bid >= entry);
+   bool market = forceMarket || (isBuy ? (ask <= entry) : (bid >= entry));
    double half = NormalizeLot(sym, lot / 2.0);
    string hs = "|" + IntegerToString(expH);
    entry = NormalizeDouble(entry, digits); sl = NormalizeDouble(sl, digits);

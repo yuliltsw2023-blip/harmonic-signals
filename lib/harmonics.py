@@ -204,6 +204,9 @@ def build_candidate(pair: str, timeframe: str, match: dict, candles: list[dict])
         # C (bukan candle terakhir) supaya setup yang sama tidak dikirim ulang
         # tiap 4 jam selama harga masih di sekitar PRZ.
         "d_date": d_date_src[:10].replace("-", ""),
+        # c_date: identitas struktur X-A-B-C — sama untuk projected & completed,
+        # dipakai dedup/ID setup kalau settings.SETUP_ID_BY_C (fix double order).
+        "c_date": s["C"]["datetime"][:10].replace("-", ""),
         "current_price": last["close"],
         "current_datetime": last["datetime"],
         "candles_count": len(candles),

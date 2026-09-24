@@ -22,7 +22,7 @@ jobs:
       SIGNAL_VERBOSE: ${{ vars.SIGNAL_VERBOSE || 'false' }}
       SIGNAL_STAGES: ${{ vars.SIGNAL_STAGES || 'approaching,in_prz,left' }}
       MIN_RR_TP2: ${{ vars.MIN_RR_TP2 || '2.0' }}
-      MT5_QUEUE: ${{ vars.MT5_QUEUE || 'true' }}
+      MT5_QUEUE: ${{ vars.MT5_QUEUE || 'false' }}
       LOG_LEVEL: info
       DRY_RUN: ${{ vars.DRY_RUN || 'false' }}
 
