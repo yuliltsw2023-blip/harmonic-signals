@@ -199,6 +199,11 @@ def rule_grade(cand: dict) -> dict:
     rr2 = cand["rr"]["tp2"]
     factors["rr"] = "A" if rr2 >= settings.GRADE_RR_A else ("B" if rr2 >= settings.GRADE_RR_B else "C")
 
+    # konflik antar-timeframe (lib/mtf.attach_mtf harus sudah dipanggil)
+    m = cand.get("mtf")
+    if settings.MTF_CONFLICT_FILTER and m is not None:
+        factors["mtf"] = "C" if m["conflict"] else "A"
+
     grade = _worst(*factors.values())
     result = {"grade": grade, "factors": factors, "source": "rule"}
     cand["rule_grade"] = result

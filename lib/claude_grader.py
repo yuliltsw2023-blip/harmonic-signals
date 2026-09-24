@@ -100,6 +100,10 @@ def _fmt(cand: dict) -> str:
     lines.append("R:R: " + ", ".join(f"{k}={v:.2f}" for k, v in cand["rr"].items()))
     lines.append(f"HTF ({cand.get('htf_timeframe', '?')}): trend={cand.get('htf_trend', '?')}, "
                  f"alignment={cand.get('htf_alignment', 'neutral')}")
+    m = cand.get("mtf")
+    if m is not None:
+        lines.append(f"MTF: struktur {m.get('ltf_tf') or 'LTF'}={m.get('ltf_bias')}, trend TF sendiri={m.get('own_trend')}, "
+                     f"konflik={'YA' if m['conflict'] else 'tidak'} ({m['reason']})")
     rg = cand["rule_grade"]
     lines.append(f"RULE GRADE: {rg['grade']}  faktor={json.dumps(rg['factors'])}")
     return "\n".join(lines)

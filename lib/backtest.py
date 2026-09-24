@@ -26,6 +26,7 @@ from config import settings
 from config.pairs import market_247
 from lib.exec_rules import INTERVAL_SEC, exec_grade_ok, harmonic_confirmed, parse_dt, poc_confirmed, session_ok
 from lib.grading import htf_alignment, htf_trend, rule_grade
+from lib.mtf import attach_mtf
 from lib.orders import harmonic_event, poc_event
 from lib.poc import analyze_poc, poc_alignment, rule_grade_poc
 from lib.scanner import analyze_candles, is_forex_closed
@@ -66,10 +67,14 @@ def weekly_from_daily(daily: list[dict]) -> list[dict]:
 
 class PairBacktest:
     def __init__(self, pair: str, tf: str, bars: list[dict], htf_bars: list[dict],
-                 lookback: int = 200, last_n: int | None = None):
+                 lookback: int = 200, last_n: int | None = None, ltf_bars: list[dict] | None = None):
         self.pair, self.tf = pair, tf
         self.bars = bars
         self.htf_bars = htf_bars
+        self.ltf_bars = ltf_bars or []
+        self.lep = [parse_dt(b["datetime"]).timestamp() for b in self.ltf_bars]
+        self.lsec = INTERVAL_SEC.get(settings.LTF_OF.get(tf) or "1h", 3600)
+        self._lj = 0
         self.lookback = lookback
         self.interval = TF_INTERVAL[tf]
         self.htf_interval = settings.HTF_OF[tf]
@@ -100,6 +105,11 @@ class PairBacktest:
         # candle HTF berjalan ikut (close = harga sekarang), seperti data live
         return closed + [{"datetime": "", "open": px, "high": px, "low": px, "close": px}]
 
+    def _ltf_asof(self, now_ts: float) -> list[dict]:
+        while self._lj < len(self.ltf_bars) and self.lep[self._lj] + self.lsec <= now_ts:
+            self._lj += 1
+        return self.ltf_bars[max(0, self._lj - 200):self._lj]
+
     def _hgrade(self, cand: dict, htf: list[dict]) -> str:
         trend = htf_trend(htf) if len(htf) >= 30 else "neutral"
         cand["htf_timeframe"] = self.htf_interval
@@ -129,12 +139,20 @@ class PairBacktest:
             forming = {"datetime": bar["datetime"], "open": bar["open"], "high": bar["open"], "low": bar["open"], "close": bar["open"]}
             window = self.bars[i - self.lookback + 1:i] + [forming]
         htf = self._htf_asof(now_ts, bar["open"])
+        ltf = self._ltf_asof(now_ts) if self.ltf_bars else []
         events: list[tuple[str, dict, dict]] = []
         self.stats["scans"] += 1
 
+        def mtf_meta(c: dict) -> dict:
+            # selalu dihitung (untuk analisis post-hoc); faktor grade hanya kalau MTF_CONFLICT_FILTER
+            m = attach_mtf(c, window, ltf, self.tf)
+            return {"ltf_bias": m["ltf_bias"], "own_trend": m["own_trend"], "conflict_ltf": m["conflict_ltf"],
+                    "conflict_own": m["conflict_own"]}
+
         for cand in analyze_candles(self.pair, self.tf, window):
             stage = cand.get("stage")
-            meta = {"kind": "harmonic", "pattern": cand["pattern"], "direction": cand["direction"], "stage": stage}
+            meta = {"kind": "harmonic", "pattern": cand["pattern"], "direction": cand["direction"], "stage": stage,
+                    **mtf_meta(cand)}
             if (settings.HARMONIC_EXEC_MODE == "confirmed" and not cand["d_projected"] and stage in ("in_prz", "left")):
                 ck = self._hkey(cand, "confirmed")
                 if not self._seen(ck, now_ts) and harmonic_confirmed(cand, window):
@@ -171,7 +189,8 @@ class PairBacktest:
         if settings.POC_ENABLED and self.tf in settings.POC_TIMEFRAMES:
             poc = analyze_poc(self.pair, self.tf, window)
             if poc is not None:
-                meta = {"kind": "poc", "pattern": "POC", "direction": poc["direction"], "stage": poc["stage"]}
+                meta = {"kind": "poc", "pattern": "POC", "direction": poc["direction"], "stage": poc["stage"],
+                        **mtf_meta(poc)}
                 if poc["stage"] in settings.POC_CANCEL_ON_STAGE and any(
                         self._seen(self._pkey(poc, s), now_ts) for s in ("approaching", "in_va", "reacted")):
                     ck = self._pkey(poc, "cancel")
@@ -271,6 +290,8 @@ class PairBacktest:
                     "id": sid, "pair": self.pair, "tf": self.tf, "kind": p["kind"], "pattern": p["pattern"],
                     "direction": p["direction"], "grade": p.get("grade"), "stage": p.get("stage"),
                     "htf": p.get("htf"), "exec_mode": p.get("exec_mode", "limit"), "order": "market" if p["market"] else "limit",
+                    "ltf_bias": p.get("ltf_bias"), "own_trend": p.get("own_trend"),
+                    "conflict_ltf": p.get("conflict_ltf"), "conflict_own": p.get("conflict_own"),
                     "entry": p["fill"], "sl": p["sl"], "tp1": p["tp1"], "tp2": p["tp2"],
                     "rr1": abs(p["tp1"] - p["fill"]) / p["risk"], "rr2": abs(p["tp2"] - p["fill"]) / p["risk"],
                     "placed": datetime.fromtimestamp(p["placed_ts"], timezone.utc).isoformat(timespec="minutes"),

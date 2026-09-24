@@ -125,6 +125,16 @@ POC_SL_ATR = {"forex": 0.2, "metal": 0.2, "crypto": 0.4, "stock_us": 0.3, "stock
 HTF_OF = {"M15": "1h", "M30": "4h", "H1": "4h", "H4": "1day", "D1": "1week"}
 HTF_OUTPUTSIZE = 120
 
+# --- Filter konflik antar-timeframe (lib/mtf.py, 24 Sep 2026) -----------------
+# TF satu tingkat di bawah TF sinyal untuk cek struktur swing (HH/HL vs LH/LL).
+# Di-fetch lazy (+1 request per kandidat yang lolos pre-grade) hanya kalau filter aktif.
+LTF_OF = {"D1": "4h", "H4": "1h", "H1": None, "M30": None, "M15": None}
+# Aktif → faktor grade "mtf" = C kalau struktur LTF melawan arah sinyal.
+MTF_CONFLICT_FILTER = os.environ.get("MTF_CONFLICT_FILTER", "true").strip().lower() == "true"
+# Juga hitung trend EMA20/50 di TF sinyal sendiri sebagai konflik (lebih ketat).
+MTF_OWN_TREND = os.environ.get("MTF_OWN_TREND", "false").strip().lower() == "true"
+
+
 
 def env(name: str, default: str = "") -> str:
     """Baca env var dan buang spasi/enter di ujung — secret yang di-paste ke

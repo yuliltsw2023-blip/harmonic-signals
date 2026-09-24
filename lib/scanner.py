@@ -13,6 +13,8 @@ from config.pairs import data_source, is_stock, market_247, symbols_for
 from lib.claude_grader import grade_setup
 from lib.grading import enrich_levels, htf_alignment, htf_trend, pre_grade, rule_grade
 from lib.harmonics import build_candidate, extract_xabcd, match_pattern
+from lib.mtf import attach_mtf
+from lib.mtf import attach_mtf
 from lib.pivots import swing_pivots
 from lib.poc import analyze_poc, poc_alignment, rule_grade_poc
 from lib.prz import construct_prz
@@ -133,6 +135,54 @@ def run_scan(timeframe: str, pairs: list[str] | None = None, dry_run: bool | Non
             cands = analyze_candles(pair, timeframe, candles)
             stats["structures_matched"] += len(cands)
             htf_candles = None
+            ltf_candles = None
+
+            def get_ltf():
+                nonlocal ltf_candles
+                ltf_iv = settings.LTF_OF.get(timeframe)
+                if ltf_iv is None:
+                    return []
+                if ltf_candles is None:
+                    try:
+                        ltf_candles = tdc.get_candles(pair, ltf_iv, outputsize=200)
+                        if settings.CLOSED_CANDLE_ONLY:
+                            ltf_candles, _ = split_closed(ltf_candles, ltf_iv)
+                    except Exception as e:  # noqa: BLE001
+                        print(f"[warn] {pair}: LTF fetch gagal ({e}), konflik MTF tidak dicek")
+                        ltf_candles = []
+                return ltf_candles
+
+            def with_mtf(c: dict) -> dict:
+                """Isi c["mtf"] (lazy fetch LTF) kalau filter konflik aktif."""
+                if settings.MTF_CONFLICT_FILTER:
+                    attach_mtf(c, candles, get_ltf(), timeframe)
+                    if c["mtf"]["conflict"]:
+                        print(f"[mtf-conflict] {pair} {c.get('pattern', 'POC')} {c['direction']}: {c['mtf']['reason']}")
+                return c
+            ltf_candles = None
+
+            def get_ltf():
+                nonlocal ltf_candles
+                ltf_iv = settings.LTF_OF.get(timeframe)
+                if ltf_iv is None:
+                    return []
+                if ltf_candles is None:
+                    try:
+                        ltf_candles = tdc.get_candles(pair, ltf_iv, outputsize=200)
+                        if settings.CLOSED_CANDLE_ONLY:
+                            ltf_candles, _ = split_closed(ltf_candles, ltf_iv)
+                    except Exception as e:  # noqa: BLE001
+                        print(f"[warn] {pair}: LTF fetch gagal ({e}), konflik MTF tidak dicek")
+                        ltf_candles = []
+                return ltf_candles
+
+            def with_mtf(c: dict) -> dict:
+                """Isi c["mtf"] (lazy fetch LTF) kalau filter konflik aktif."""
+                if settings.MTF_CONFLICT_FILTER:
+                    attach_mtf(c, candles, get_ltf(), timeframe)
+                    if c["mtf"]["conflict"]:
+                        print(f"[mtf-conflict] {pair} {c.get('pattern', 'POC')} {c['direction']}: {c['mtf']['reason']}")
+                return c
 
             def get_htf():
                 nonlocal htf_candles
@@ -158,7 +208,7 @@ def run_scan(timeframe: str, pairs: list[str] | None = None, dry_run: bool | Non
                         cand["htf_timeframe"] = htf_interval
                         cand["htf_trend"] = trend
                         cand["htf_alignment"] = htf_alignment(cand, trend)
-                        rule_grade(cand)
+                        rule_grade(with_mtf(cand))
                         cgrade = grade_setup(cand)["grade"]
                         if cgrade != "C" and exec_grade_ok(cgrade) and session_ok(pair, timeframe):
                             queue(harmonic_event(cand, {"grade": cgrade}), pair, cgrade)
@@ -207,7 +257,7 @@ def run_scan(timeframe: str, pairs: list[str] | None = None, dry_run: bool | Non
                 cand["htf_timeframe"] = htf_interval
                 cand["htf_trend"] = trend
                 cand["htf_alignment"] = htf_alignment(cand, trend)
-                rule_grade(cand)
+                rule_grade(with_mtf(cand))
 
                 grade = grade_setup(cand)
                 print(f"[grade] {tag}: {grade['grade']} (rule {cand['rule_grade']['grade']}, src {grade['source']})")
@@ -249,7 +299,7 @@ def run_scan(timeframe: str, pairs: list[str] | None = None, dry_run: bool | Non
                             poc["htf_timeframe"] = htf_interval
                             poc["htf_trend"] = trend
                             poc["htf_alignment"] = poc_alignment(poc, trend)
-                            cg = rule_grade_poc(poc)["grade"]
+                            cg = rule_grade_poc(with_mtf(poc))["grade"]
                             if cg != "C" and exec_grade_ok(cg) and session_ok(pair, timeframe):
                                 queue(poc_event(poc), pair, cg)
                                 mark_signaled(ck)
@@ -272,7 +322,7 @@ def run_scan(timeframe: str, pairs: list[str] | None = None, dry_run: bool | Non
                         poc["htf_timeframe"] = htf_interval
                         poc["htf_trend"] = trend
                         poc["htf_alignment"] = poc_alignment(poc, trend)
-                        g = rule_grade_poc(poc)
+                        g = rule_grade_poc(with_mtf(poc))
                         print(f"[poc-grade] {ptag}: {g['grade']} {g['factors']}")
                         if g["grade"] == "C":
                             stats["grade_c"] += 1

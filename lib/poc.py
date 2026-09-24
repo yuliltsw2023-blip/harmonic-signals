@@ -322,6 +322,9 @@ def rule_grade_poc(cand: dict) -> dict:
     f["rr"] = "A" if rr_eff >= settings.GRADE_RR_A else ("B" if rr_eff >= settings.GRADE_RR_B else "C")
     f["reaction"] = "A" if len(cand["reactions"]) >= 2 else "B"
     f["profile"] = "A" if cand["profile"]["source"] == "volume" else "B"
+    m = cand.get("mtf")
+    if settings.MTF_CONFLICT_FILTER and m is not None:
+        f["mtf"] = "C" if m["conflict"] else "A"
     grade = _worst(*f.values())
     reasoning = [
         f"Kedalaman POC {cand['depth']:.2f} ({cand['depth_label']})",
@@ -331,6 +334,10 @@ def rule_grade_poc(cand: dict) -> dict:
         ("Reaksi: " + ", ".join(cand["reactions"])) if cand["reactions"] else "Reaksi: belum ada — tunggu candle close",
         "Profile: volume asli" if cand["profile"]["source"] == "volume" else "Profile: TPO (time-at-price, tanpa volume) — maks Grade B",
     ]
+    if m is not None:
+        reasoning.append(f"MTF: {m['reason']}")
+    if m is not None:
+        reasoning.append(f"MTF: {m['reason']}")
     result = {"grade": grade, "factors": f, "reasoning": reasoning, "source": "rule"}
     cand["grade"] = result
     return result

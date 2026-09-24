@@ -25,12 +25,14 @@ from lib.backtest import PairBacktest, TF_INTERVAL, group_summary, load_history,
 
 BASE_FIX = dict(CLOSED_CANDLE_ONLY=True, SETUP_ID_BY_C=True,
                 POC_CANCEL_ON_STAGE=("broken", "continued", "left_va", "below_va"),
-                PRZ_BAND_XA=0.0, POC_MIN_LEG_ATR=0.0, POC_TIMEFRAMES=("H1", "H4", "D1"))
+                PRZ_BAND_XA=0.0, POC_MIN_LEG_ATR=0.0, POC_TIMEFRAMES=("H1", "H4", "D1"),
+                MTF_CONFLICT_FILTER=False, MTF_OWN_TREND=False)
 VARIANTS = {
     # persis perilaku live sampai 24 Sep 2026
     "v0_live": dict(CLOSED_CANDLE_ONLY=False, HARMONIC_EXEC_MODE="limit", POC_EXEC_MODE="limit",
                     EXEC_MIN_GRADE="B", EXEC_SESSION_UTC=(), SETUP_ID_BY_C=False, POC_CANCEL_ON_STAGE=(),
-                    PRZ_BAND_XA=0.0, POC_MIN_LEG_ATR=0.0, POC_TIMEFRAMES=("H1", "H4", "D1")),
+                    PRZ_BAND_XA=0.0, POC_MIN_LEG_ATR=0.0, POC_TIMEFRAMES=("H1", "H4", "D1"),
+                    MTF_CONFLICT_FILTER=False, MTF_OWN_TREND=False),
     # bug fix saja: candle closed-only, satu ID per pattern, cancel POC saat struktur patah
     "v1_fix": dict(BASE_FIX, HARMONIC_EXEC_MODE="limit", POC_EXEC_MODE="limit", EXEC_MIN_GRADE="B", EXEC_SESSION_UTC=()),
     # + entry hanya setelah konfirmasi (D pivot / candle reaksi), market, SL di luar D / ekstrem pullback
@@ -50,6 +52,13 @@ VARIANTS = {
     # v1 tanpa POC D1 (default produksi sejak 24 Sep 2026)
     "v8_fix_noPocD1": dict(BASE_FIX, HARMONIC_EXEC_MODE="limit", POC_EXEC_MODE="limit", EXEC_MIN_GRADE="B",
                            EXEC_SESSION_UTC=(), POC_TIMEFRAMES=("H1", "H4")),
+    # v8 + filter konflik struktur LTF (D1→H4, H4→H1)
+    "v9_conflict_ltf": dict(BASE_FIX, HARMONIC_EXEC_MODE="limit", POC_EXEC_MODE="limit", EXEC_MIN_GRADE="B",
+                            EXEC_SESSION_UTC=(), POC_TIMEFRAMES=("H1", "H4"), MTF_CONFLICT_FILTER=True),
+    # v9 + trend EMA20/50 di TF sinyal sendiri juga harus searah
+    "v10_conflict_ltf_own": dict(BASE_FIX, HARMONIC_EXEC_MODE="limit", POC_EXEC_MODE="limit", EXEC_MIN_GRADE="B",
+                                 EXEC_SESSION_UTC=(), POC_TIMEFRAMES=("H1", "H4"), MTF_CONFLICT_FILTER=True,
+                                 MTF_OWN_TREND=True),
     # v6 + hanya Grade A + sesi London–NY
     "v7_confirmed_struct_A_session": dict(BASE_FIX, HARMONIC_EXEC_MODE="confirmed", POC_EXEC_MODE="confirmed",
                                           EXEC_MIN_GRADE="A", EXEC_SESSION_UTC=(6, 20), PRZ_BAND_XA=0.06, POC_MIN_LEG_ATR=2.0),
@@ -71,7 +80,14 @@ def _worker(args):
         htf = weekly_from_daily(load_history(pair, "1day")) if htf_iv == "1week" else load_history(pair, htf_iv)
     except FileNotFoundError as e:
         return {"pair": pair, "tf": tf, "error": str(e), "trades": [], "stats": {}}
-    bt = PairBacktest(pair, tf, bars, htf, last_n=last_n)
+    ltf_iv = settings.LTF_OF.get(tf)
+    ltf = None
+    if ltf_iv:
+        try:
+            ltf = load_history(pair, ltf_iv)
+        except FileNotFoundError:
+            ltf = None
+    bt = PairBacktest(pair, tf, bars, htf, last_n=last_n, ltf_bars=ltf)
     return bt.run()
 
 
@@ -110,6 +126,8 @@ def print_report(res: dict) -> None:
     for label, key in (("kind", lambda t: t["kind"]), ("tf", lambda t: t["tf"]), ("grade", lambda t: t["grade"]),
                        ("kind×tf", lambda t: f"{t['kind']} {t['tf']}"), ("pattern", lambda t: t["pattern"]),
                        ("htf", lambda t: t["htf"]), ("order", lambda t: t["order"]),
+                       ("LTF bias vs arah", lambda t: "n/a" if t.get("ltf_bias") is None else ("KONFLIK" if t.get("conflict_ltf") else "searah")),
+                       ("own trend vs arah", lambda t: "n/a" if t.get("own_trend") == "neutral" else ("KONFLIK" if t.get("conflict_own") else "searah")),
                        ("fill_hour(UTC)", lambda t: f"{t['fill_hour']:02d}"),
                        ("direction", lambda t: t["direction"])):
         print(f"-- by {label}")
