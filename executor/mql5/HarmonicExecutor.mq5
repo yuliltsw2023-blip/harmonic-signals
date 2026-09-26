@@ -6,15 +6,18 @@
 //| scanner di GitHub Actions, lalu memasang pending limit / market   |
 //| dengan lot = risiko % ekuitas, 50/50 TP1/TP2, SL ke breakeven     |
 //| setelah TP1, cancel saat "jangan kejar" / kedaluwarsa, batas      |
+//| v1.2: setup HARMONIC = satu posisi tanpa TP + trailing stop       |
+//|   (profit ≥ 1R → SL ke BE, lalu ikut swing low/high terkonfirmasi |
+//|   di TF setup). POC tetap 50/50 TP1/TP2 + BE.                      |
 //| setup aktif & rugi harian. Logika = executor/ (Python).           |
 //|                                                                   |
 //| WAJIB: Tools > Options > Expert Advisors > Allow WebRequest untuk |
 //|   https://<akun>.upstash.io  dan  https://api.telegram.org        |
 //+------------------------------------------------------------------+
 #property copyright "harmonic-signals"
-#property version   "1.10"
+#property version   "1.20"
 #property strict
-#define HS_VERSION "v1.1 (laporan + perintah Telegram)"
+#define HS_VERSION "v1.2 (trailing harmonic)"
 #include <Trade\Trade.mqh>
 
 input string InpUpstashUrl    = "";        // Upstash REST URL (https://xxx.upstash.io)
@@ -35,6 +38,9 @@ input string InpQueueKey      = "mt5:queue";
 input string InpHaltKey       = "mt5:halt";
 input string InpReportHours   = "2,14";    // Jam laporan portofolio (UTC, koma) — 2,14 = 09:00 & 21:00 WIB
 input string InpTelegramAdmin = "";        // Telegram user id tambahan yang boleh kirim perintah (opsional)
+input bool   InpTrailHarmonic = true;     // Harmonic: tanpa TP, trailing stop struktur swing
+input int    InpTrailPivot    = 3;        // Swing = fractal N candle kiri & kanan (TF setup)
+input double InpTrailStartR   = 1.0;      // Trailing aktif setelah profit >= N x jarak SL awal (SL -> BE dulu)
 
 CTrade   trade;
 long     g_haltDay = 0;          // yyyymmdd saat batas rugi harian kena
@@ -210,6 +216,8 @@ string TagOf(const string id)
   }
 
 string CommentTag(const string comment) { int p = StringFind(comment, "|"); return p < 0 ? comment : StringSubstr(comment, 0, p); }
+// Field ke-idx komentar "TAG|LEG|jamKedaluwarsa[|TF]" (0 = tag); "" kalau tidak ada
+string CommentField(const string comment, int idx) { string f[]; int n = StringSplit(comment, '|', f); return idx < n ? f[idx] : ""; }
 
 //+------------------------------------------------------------------+
 //| ISO "2026-09-23T06:31:00+00:00" -> datetime (UTC)                 |
@@ -367,8 +375,12 @@ void Place(const string ev)
    entry = NormalizeDouble(entry, digits); sl = NormalizeDouble(sl, digits);
    tp1 = NormalizeDouble(tp1, digits); tp2 = NormalizeDouble(tp2, digits);
 
+   bool trail = InpTrailHarmonic && (JGet(ev, "kind") == "harmonic" || StringFind(id, "h:") == 0);
+   string tf = JGet(ev, "timeframe");
    bool ok;
-   if(InpSplitTP && half > 0)
+   if(trail)   // satu posisi penuh tanpa TP; keluar lewat trailing stop (ManageTrailing)
+      ok = SendLeg(sym, isBuy, market, lot, entry, sl, 0.0, tag + "|TR" + hs + "|" + tf);
+   else if(InpSplitTP && half > 0)
      {
       ok = SendLeg(sym, isBuy, market, half, entry, sl, tp1, tag + "|TP1" + hs);
       if(ok) ok = SendLeg(sym, isBuy, market, half, entry, sl, tp2, tag + "|TP2" + hs);
@@ -376,8 +388,8 @@ void Place(const string ev)
    else ok = SendLeg(sym, isBuy, market, lot, entry, sl, tp1, tag + "|TP1" + hs);
 
    if(ok) Notify("✅ " + label + " · " + (market ? "market" : "limit") + " " + (isBuy ? "BUY" : "SELL") + " " + DoubleToString(lot, 2) +
-                 " lot @ " + DoubleToString(entry, digits) + " · SL " + DoubleToString(sl, digits) + " · TP1 " + DoubleToString(tp1, digits) +
-                 " · TP2 " + DoubleToString(tp2, digits) + " · Grade " + grade);
+                 " lot @ " + DoubleToString(entry, digits) + " · SL " + DoubleToString(sl, digits) + (trail ? " · TP: trailing swing " + tf + " (aktif setelah +" + DoubleToString(InpTrailStartR, 1) + "R)" :
+                 " · TP1 " + DoubleToString(tp1, digits) + " · TP2 " + DoubleToString(tp2, digits)) + " · Grade " + grade);
    else   Notify("⚠️ " + label + ": order ditolak broker, lihat log Experts");
   }
 
@@ -439,6 +451,96 @@ void ManageBreakeven()
      }
   }
 
+ENUM_TIMEFRAMES TfOf(const string tf)
+  {
+   if(tf == "M15") return PERIOD_M15;
+   if(tf == "M30") return PERIOD_M30;
+   if(tf == "H1")  return PERIOD_H1;
+   if(tf == "D1")  return PERIOD_D1;
+   return PERIOD_H4;
+  }
+
+// Posisi "|TR": jarak SL awal disimpan di GlobalVariable HS_R_<tiket> saat pertama terlihat
+// (SL belum pernah digeser EA). Semua info candle dari candle yang SUDAH tutup (shift >= 1),
+// sama dengan backtest (lib/backtest.py _trail, varian v20_trail_harmonic_only).
+void ManageTrailing()
+  {
+   int n = MathMax(1, InpTrailPivot);
+   for(int i = PositionsTotal() - 1; i >= 0; i--)
+     {
+      ulong t = PositionGetTicket(i);
+      if(t == 0 || PositionGetInteger(POSITION_MAGIC) != InpMagic) continue;
+      string c = PositionGetString(POSITION_COMMENT);
+      if(CommentField(c, 1) != "TR") continue;
+      string sym = PositionGetString(POSITION_SYMBOL);
+      ENUM_TIMEFRAMES tf = TfOf(CommentField(c, 3));
+      bool buy = (PositionGetInteger(POSITION_TYPE) == POSITION_TYPE_BUY);
+      double open = PositionGetDouble(POSITION_PRICE_OPEN), sl = PositionGetDouble(POSITION_SL);
+      int digits = (int)SymbolInfoInteger(sym, SYMBOL_DIGITS);
+      string gv = "HS_R_" + IntegerToString((long)t);
+      if(!GlobalVariableCheck(gv))
+        {
+         if(sl <= 0) continue;
+         GlobalVariableSet(gv, MathAbs(open - sl));
+        }
+      double risk = GlobalVariableGet(gv);
+      if(risk <= 0) continue;
+
+      int sh = iBarShift(sym, tf, (datetime)PositionGetInteger(POSITION_TIME), false);
+      if(sh < 1) continue;                                   // masih di candle pengisian
+      bool active = sl > 0 && (buy ? sl >= open : sl <= open);
+      double newSl = sl;
+      if(!active)
+        {
+         double best = buy ? iHigh(sym, tf, iHighest(sym, tf, MODE_HIGH, sh, 1)) : iLow(sym, tf, iLowest(sym, tf, MODE_LOW, sh, 1));
+         if(best <= 0) continue;                             // histori TF belum termuat
+         double gain = buy ? best - open : open - best;
+         if(gain < InpTrailStartR * risk) continue;
+         newSl = open;                                       // SL -> BE
+        }
+      double close1 = iClose(sym, tf, 1);
+      if(close1 <= 0) continue;
+      for(int k = n + 1; k <= 150; k++)                      // swing terkonfirmasi terakhir
+        {
+         bool piv = true;
+         if(buy)
+           {
+            double lk = iLow(sym, tf, k);
+            for(int j = 1; j <= n && piv; j++) piv = lk < iLow(sym, tf, k + j) && lk <= iLow(sym, tf, k - j);
+            if(!piv) continue;
+            if(lk > newSl && lk < close1) newSl = lk;
+           }
+         else
+           {
+            double hk = iHigh(sym, tf, k);
+            for(int j = 1; j <= n && piv; j++) piv = hk > iHigh(sym, tf, k + j) && hk >= iHigh(sym, tf, k - j);
+            if(!piv) continue;
+            if(hk < newSl && hk > close1) newSl = hk;
+           }
+         break;
+        }
+      newSl = NormalizeDouble(newSl, digits);
+      if(MathAbs(newSl - sl) < SymbolInfoDouble(sym, SYMBOL_POINT) / 2) continue;
+      // harus tetap di luar stop level broker dari harga sekarang
+      double minDist = SymbolInfoInteger(sym, SYMBOL_TRADE_STOPS_LEVEL) * SymbolInfoDouble(sym, SYMBOL_POINT);
+      double px = buy ? SymbolInfoDouble(sym, SYMBOL_BID) : SymbolInfoDouble(sym, SYMBOL_ASK);
+      if(buy ? (newSl > px - minDist) : (newSl < px + minDist)) continue;
+      if(trade.PositionModify(t, newSl, 0.0))
+        {
+         double lockedR = (buy ? newSl - open : open - newSl) / risk;
+         Notify((lockedR < 0.05 ? "🔒 " : "📈 ") + sym + " " + CommentTag(c) + (lockedR < 0.05 ? " SL→BE " : " trailing SL → ") +
+                DoubleToString(newSl, digits) + (lockedR >= 0.05 ? " (kunci +" + DoubleToString(lockedR, 1) + "R)" : ""));
+        }
+     }
+   // bersihkan catatan risiko posisi yang sudah tutup
+   for(int g = GlobalVariablesTotal() - 1; g >= 0; g--)
+     {
+      string name = GlobalVariableName(g);
+      if(StringFind(name, "HS_R_") != 0) continue;
+      if(!PositionSelectByTicket((ulong)StringToInteger(StringSubstr(name, 5)))) GlobalVariableDel(name);
+     }
+  }
+
 void ExpirePendings()
   {
    for(int i = OrdersTotal() - 1; i >= 0; i--)
@@ -446,8 +548,7 @@ void ExpirePendings()
       ulong t = OrderGetTicket(i);
       if(t == 0 || OrderGetInteger(ORDER_MAGIC) != InpMagic) continue;
       string c = OrderGetString(ORDER_COMMENT);
-      int p = StringFind(c, "|", StringFind(c, "|") + 1);
-      int hours = (p < 0) ? 24 : (int)StringToInteger(StringSubstr(c, p + 1));
+      int hours = (int)StringToInteger(CommentField(c, 2));
       if(hours <= 0) hours = 24;
       if(TimeCurrent() - (datetime)OrderGetInteger(ORDER_TIME_SETUP) > hours * 3600)
          if(trade.OrderDelete(t)) Notify("⌛ " + OrderGetString(ORDER_SYMBOL) + " " + CommentTag(c) + ": pending kedaluwarsa dibatalkan");
@@ -657,6 +758,7 @@ void Tick()
       else if(action == "place") Place(ev);
      }
    ManageBreakeven();
+   ManageTrailing();
    ExpirePendings();
    CheckDailyLoss();
   }

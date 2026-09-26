@@ -132,6 +132,15 @@ HTF_OUTPUTSIZE = 120
 # kolom r_net: forex 1 pip di 1.0000 = 0.0001, XAU ≈ 0.30 USD, crypto 0.05 %.
 BT_EXIT_R = 0.0
 BT_SL_WIDEN_ATR = 0.0
+# BT_TRAIL: satu posisi tanpa TP; setelah profit ≥ BT_TRAIL_START_R × risiko, SL → BE lalu
+# ikut swing low/high terkonfirmasi terakhir (fractal BT_TRAIL_PIVOT kiri/kanan) di TF setup,
+# dikurangi BT_TRAIL_BUF_ATR × ATR14. BT_TRAIL_KEEP_TP1: 50% tetap keluar di TP1, 50% trailing.
+BT_TRAIL = False
+BT_TRAIL_PIVOT = 3
+BT_TRAIL_START_R = 1.0
+BT_TRAIL_BUF_ATR = 0.0
+BT_TRAIL_KEEP_TP1 = False
+BT_TRAIL_KINDS = ("harmonic", "poc")   # jenis setup yang di-trailing; sisanya tetap TP1/TP2
 BT_SPREAD = {"forex": 0.0001, "metal": 0.00009, "crypto": 0.0005, "stock_us": 0.0003, "stock_idx": 0.002}
 
 # --- Filter konflik antar-timeframe (lib/mtf.py, 24 Sep 2026) -----------------

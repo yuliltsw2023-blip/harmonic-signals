@@ -258,7 +258,15 @@ class PairBacktest:
                     continue
                 if o["market"]:
                     self.stats["market_fills"] += 1
-                if settings.BT_EXIT_R > 0:
+                sign = 1 if o["buy"] else -1
+                far = float("inf") * sign
+                trail = settings.BT_TRAIL and o["kind"] in settings.BT_TRAIL_KINDS
+                if trail and settings.BT_TRAIL_KEEP_TP1:
+                    legs = {"tp1": {"sl": o["sl"], "tp": o["tp1"], "open": True, "w": 0.5},
+                            "trail": {"sl": o["sl"], "tp": far, "open": True, "w": 0.5}}
+                elif trail:
+                    legs = {"trail": {"sl": o["sl"], "tp": far, "open": True, "w": 1.0}}
+                elif settings.BT_EXIT_R > 0:
                     sign = 1 if o["buy"] else -1
                     legs = {"tpR": {"sl": o["sl"], "tp": fill + sign * settings.BT_EXIT_R * risk, "open": True, "w": 1.0}}
                 else:
@@ -266,6 +274,7 @@ class PairBacktest:
                             "tp2": {"sl": o["sl"], "tp": o["tp2"], "open": True, "w": 0.5}}
                 self.positions[sid] = {
                     **o, "fill": fill, "fill_i": i, "fill_ts": now_ts, "risk": risk, "r": 0.0, "legs": legs,
+                    "best": fill, "trail_on": False,
                 }
                 del self.pending[sid]
             elif now_ts >= o["expires_ts"]:
@@ -274,6 +283,8 @@ class PairBacktest:
         # posisi → SL / TP (konservatif: SL dulu kalau dua-duanya kena)
         for sid, p in list(self.positions.items()):
             buy = p["buy"]
+            if "trail" in p["legs"] and p["legs"]["trail"]["open"] and i > p["fill_i"]:
+                self._trail(p, i)
             for name, leg in p["legs"].items():
                 if not leg["open"]:
                     continue
@@ -290,14 +301,15 @@ class PairBacktest:
                     p["r"] += w * ((exit_px - p["fill"]) if buy else (p["fill"] - exit_px)) / p["risk"]
                     leg["open"] = False
                     leg["exit"] = "sl" if abs(sl - p["sl"]) > 1e-12 or True else "sl"
-                    leg["exit_kind"] = "be" if abs(sl - p["fill"]) < 1e-12 else "sl"
+                    leg["exit_kind"] = "be" if abs(sl - p["fill"]) < 1e-12 else ("trail" if abs(sl - p["sl"]) > 1e-12 else "sl")
                 elif hit_tp:
                     exit_px = max(o_, tp) if buy else min(o_, tp)
                     p["r"] += w * abs(exit_px - p["fill"]) / p["risk"]
                     leg["open"] = False
                     leg["exit_kind"] = name
-                    if name == "tp1" and p["legs"]["tp2"]["open"]:
+                    if name == "tp1" and "tp2" in p["legs"] and p["legs"]["tp2"]["open"]:
                         p["legs"]["tp2"]["sl"] = p["fill"]  # SL → BE
+            p["best"] = max(p["best"], h_) if buy else min(p["best"], l_)
             if not any(lg["open"] for lg in p["legs"].values()):
                 fill_dt = datetime.fromtimestamp(p["fill_ts"], timezone.utc)
                 spread = settings.BT_SPREAD.get(asset_class(self.pair), 0.0001)
@@ -321,6 +333,36 @@ class PairBacktest:
                     "result": "win" if p["r"] > 1e-9 else ("loss" if p["r"] < -1e-9 else "flat"),
                 })
                 del self.positions[sid]
+
+    def _trail(self, p: dict, i: int) -> None:
+        """Geser SL leg trailing memakai info candle yang SUDAH tutup (bar < i):
+        aktif setelah profit terbaik ≥ BT_TRAIL_START_R × risiko (SL → BE), lalu ke swing
+        terkonfirmasi terakhir. SL hanya bergerak searah profit."""
+        leg, buy, n = p["legs"]["trail"], p["buy"], settings.BT_TRAIL_PIVOT
+        if not p["trail_on"]:
+            gain = (p["best"] - p["fill"]) if buy else (p["fill"] - p["best"])
+            if gain < settings.BT_TRAIL_START_R * p["risk"]:
+                return
+            p["trail_on"] = True
+            leg["sl"] = max(leg["sl"], p["fill"]) if buy else min(leg["sl"], p["fill"])
+        last = i - 1                                   # candle tutup terakhir
+        buf = settings.BT_TRAIL_BUF_ATR * atr(self.bars[max(0, last - 30):last + 1]) if settings.BT_TRAIL_BUF_ATR else 0.0
+        close = self.bars[last]["close"]
+        for k in range(last - n, max(n - 1, last - 150), -1):
+            if buy:
+                lk = self.bars[k]["low"]
+                if all(lk < self.bars[j]["low"] for j in range(k - n, k)) and all(lk <= self.bars[j]["low"] for j in range(k + 1, k + n + 1)):
+                    cand = lk - buf
+                    if leg["sl"] < cand < close:
+                        leg["sl"] = cand
+                    return
+            else:
+                hk = self.bars[k]["high"]
+                if all(hk > self.bars[j]["high"] for j in range(k - n, k)) and all(hk >= self.bars[j]["high"] for j in range(k + 1, k + n + 1)):
+                    cand = hk + buf
+                    if close < cand < leg["sl"]:
+                        leg["sl"] = cand
+                    return
 
     # ----------------------------------------------------------------- run
     def run(self) -> dict:
