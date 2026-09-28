@@ -23,7 +23,7 @@ from config import settings
 from config.pairs import symbols_for
 from lib.backtest import PairBacktest, TF_INTERVAL, group_summary, load_history, summarize, weekly_from_daily
 
-BASE_FIX = dict(CLOSED_CANDLE_ONLY=True, SETUP_ID_BY_C=True,
+BASE_FIX = dict(CLOSED_CANDLE_ONLY=True, SETUP_ID_BY_C=True, HARMONIC_COMBO_SEARCH=False,
                 POC_CANCEL_ON_STAGE=("broken", "continued", "left_va", "below_va"),
                 PRZ_BAND_XA=0.0, POC_MIN_LEG_ATR=0.0, POC_TIMEFRAMES=("H1", "H4", "D1"),
                 MTF_CONFLICT_FILTER=False, MTF_OWN_TREND=False, BT_EXIT_R=0.0, BT_SL_WIDEN_ATR=0.0, BT_TRAIL=False, BT_TRAIL_KEEP_TP1=False,
@@ -76,6 +76,10 @@ VARIANTS = {
     "v19_tp1_plus_trail": dict(BASE_FIX, **V9, BT_TRAIL=True, BT_TRAIL_PIVOT=3, BT_TRAIL_KEEP_TP1=True),
     # Keputusan user 26 Sep 2026: trailing hanya untuk harmonic, POC tetap TP1/TP2 + BE (= EA v1.2)
     "v20_trail_harmonic_only": dict(BASE_FIX, **V9, BT_TRAIL=True, BT_TRAIL_PIVOT=3, BT_TRAIL_KINDS=("harmonic",)),
+    # 28 Sep 2026: pencarian kombinasi pivot XABCD (X/A/B tidak harus berurutan, C boleh pivot ke-2 terakhir)
+    "v21_combo": dict(BASE_FIX, **V9, BT_TRAIL=True, BT_TRAIL_PIVOT=3, BT_TRAIL_KINDS=("harmonic",),
+                      HARMONIC_COMBO_SEARCH=True),
+    "v22_combo_notrail": dict(BASE_FIX, **V9, HARMONIC_COMBO_SEARCH=True),
     # v6 + hanya Grade A + sesi London–NY
     "v7_confirmed_struct_A_session": dict(BASE_FIX, HARMONIC_EXEC_MODE="confirmed", POC_EXEC_MODE="confirmed",
                                           EXEC_MIN_GRADE="A", EXEC_SESSION_UTC=(6, 20), PRZ_BAND_XA=0.06, POC_MIN_LEG_ATR=2.0),

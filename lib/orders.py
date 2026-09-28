@@ -74,6 +74,51 @@ def poc_event(cand: dict, action: str = "place") -> dict:
     return ev
 
 
+def manual_event(symbol: str, side: str, entry: float, sl: float, tp1: float, tp2: float | None,
+                 timeframe: str, setup: str, order: str = "limit", exit_mode: str = "tp",
+                 grade: str = "A", expires_hours: float | None = None,
+                 risk_pct: float | None = None, be_r: float = 1.0) -> dict:
+    """Event 'place' untuk setup yang dikonfirmasi manual (scripts/manual/queue_manual.py).
+
+    exit_mode "trail" = id "h:" → EA v1.2 pakai trailing swing di `timeframe` (tanpa TP);
+    "tpbe" = id "m:" + be_r → EA v1.3: satu posisi ke TP1, SL→BE setelah +be_r R;
+    "tp" = id "m:" → EA pasang TP1 (dan TP2 kalau lot bisa dibagi dua).
+    risk_pct (EA v1.3, dibatasi InpMaxRiskPct) menimpa risiko dari grade
+    (Grade A = InpRiskPct penuh, B = setengahnya).
+    """
+    if side not in ("buy", "sell"):
+        raise ValueError("side harus buy/sell")
+    if (side == "buy" and not sl < entry < tp1) or (side == "sell" and not sl > entry > tp1):
+        raise ValueError("urutan SL/entry/TP1 tidak cocok dengan arah")
+    now = datetime.now(timezone.utc)
+    prefix = "h" if exit_mode == "trail" else "m"
+    ev = {
+        "id": f"{prefix}:{symbol}:{timeframe}:{setup}:{now:%Y%m%d%H%M}",
+        "action": "place",
+        "kind": "harmonic" if exit_mode == "trail" else "manual",
+        "symbol": symbol,
+        "timeframe": timeframe,
+        "side": side,
+        "stage": "manual",
+        "created_at": now.isoformat(timespec="seconds"),
+        "expires_hours": expires_hours or EXPIRY_HOURS.get(timeframe, 24),
+        "label": f"{symbol} {setup} {'BUY' if side == 'buy' else 'SELL'} {timeframe} (manual)",
+        "entry": float(entry),
+        "sl": float(sl),
+        "tp1": float(tp1),
+        "tp2": float(tp2 if tp2 is not None else tp1),
+        "grade": grade,
+        "prz": [float(min(entry, sl)), float(max(entry, sl))],
+        "order": order,
+        "exec_mode": "confirmed" if order == "market" else "limit",
+    }
+    if risk_pct:
+        ev["risk_pct"] = float(risk_pct)
+    if exit_mode == "tpbe":
+        ev["be_r"] = float(be_r)
+    return ev
+
+
 def is_expired(ev: dict, now: datetime | None = None) -> bool:
     now = now or datetime.now(timezone.utc)
     created = datetime.fromisoformat(ev["created_at"])

@@ -205,7 +205,7 @@ def test_scanner_limit_mode_respects_min_grade(monkeypatch, capsys):
 
 def test_scanner_poc_cancel_on_structure_break(monkeypatch, capsys):
     _live(monkeypatch, HARMONIC_EXEC_MODE="limit", POC_EXEC_MODE="limit", EXEC_MIN_GRADE="B", POC_ENABLED=True,
-          POC_CANCEL_ON_STAGE=("broken", "continued", "left_va", "below_va"))
+          POC_CANCEL_ON_STAGE=("broken", "continued", "left_va", "below_va"), POC_TIMEFRAMES=("H1", "H4"))
     base = bull_setup(pullback_to=1.1230, volume=1000.0)   # profile volume → depth ideal
     _TD.data = {"NZD/USD": base}
     assert scanner.run_scan("H4", pairs=["NZD/USD"], dry_run=False) == 0

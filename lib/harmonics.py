@@ -42,6 +42,8 @@ def extract_xabcd(pivots: list[dict], candles: list[dict]) -> list[dict]:
     Hanya struktur yang berakhir di pivot-pivot terbaru yang dipakai; pattern
     lama tidak actionable.
     """
+    if settings.HARMONIC_COMBO_SEARCH:
+        return extract_xabcd_combo(pivots, candles)
     out: list[dict] = []
     n = len(pivots)
     last_idx = len(candles) - 1
@@ -67,6 +69,78 @@ def extract_xabcd(pivots: list[dict], candles: list[dict]) -> list[dict]:
                 "X": x, "A": a, "B": b, "C": c, "D": d,
                 "direction": direction_of(x), "d_projected": False,
             })
+    return out
+
+
+def _xabc_combos(pivots: list[dict], ci: int, end: int, max_back: int) -> list[tuple]:
+    """Semua (xi, ai, bi) sebelum C=pivots[ci] yang membentuk struktur sah:
+    A ekstrem di X..C, B ekstrem kebalikan di A..C, X ekstrem kebalikan di X..A,
+    dan C ekstrem di B..end (pivot `end` = batas akhir pengecekan)."""
+    C = pivots[ci]
+    top = C["type"]                       # tipe A & C
+    bot = "L" if top == "H" else "H"      # tipe X, B (& D)
+    more = (lambda u, v: u > v) if top == "H" else (lambda u, v: u < v)   # "lebih ekstrem" untuk top
+    less = (lambda u, v: u < v) if top == "H" else (lambda u, v: u > v)   # "lebih ekstrem" untuk bot
+
+    def beats(i: int, j: int, t: str, ref: float, cmp) -> bool:
+        return any(p["type"] == t and cmp(p["price"], ref) for p in pivots[i:j + 1])
+
+    if beats(ci + 1, end, top, C["price"], more):
+        return []
+    lo = max(0, ci - max_back)
+    out = []
+    for bi in range(lo, ci):
+        B = pivots[bi]
+        if B["type"] != bot or beats(bi, ci, bot, B["price"], less):
+            continue
+        for ai in range(lo, bi):
+            A = pivots[ai]
+            if A["type"] != top or beats(ai, ci, top, A["price"], more):
+                continue
+            for xi in range(lo, ai):
+                X = pivots[xi]
+                if X["type"] != bot or beats(xi, ai, bot, X["price"], less):
+                    continue
+                if beats(xi, ai, top, A["price"], more):
+                    continue
+                out.append((xi, ai, bi))
+    return out
+
+
+def extract_xabcd_combo(pivots: list[dict], candles: list[dict]) -> list[dict]:
+    """Versi kombinasi dari extract_xabcd (settings.HARMONIC_COMBO_SEARCH).
+
+      * projected — C = pivot terakhir, atau pivot kedua terakhir kalau pivot
+                    terakhir (searah D) belum menembus C → leg CD masih berjalan.
+      * completed — D = pivot terakhir (maks MAX_D_AGE_BARS bar), C sebelumnya,
+                    D ekstrem sejak C.
+    """
+    out: list[dict] = []
+    n = len(pivots)
+    last_idx = len(candles) - 1
+    mb = settings.COMBO_MAX_BACK
+
+    def direction_of(c: dict) -> str:
+        return "bull" if c["type"] == "H" else "bear"   # C high → D low → buy
+
+    for ci in (n - 1, n - 2):
+        if ci < 3:
+            continue
+        C = pivots[ci]
+        after = candles[C["idx"] + 1:]
+        if after and ((C["type"] == "H" and max(c["high"] for c in after) > C["price"])
+                      or (C["type"] == "L" and min(c["low"] for c in after) < C["price"])):
+            continue                      # harga sudah menembus C → struktur batal
+        for xi, ai, bi in _xabc_combos(pivots, ci, n - 1, mb):
+            out.append({"X": pivots[xi], "A": pivots[ai], "B": pivots[bi], "C": pivots[ci], "D": None,
+                        "direction": direction_of(pivots[ci]), "d_projected": True})
+
+    if n >= 5 and last_idx - pivots[-1]["idx"] <= settings.MAX_D_AGE_BARS:
+        ci, D = n - 2, pivots[-1]
+        if D["type"] != pivots[ci]["type"]:
+            for xi, ai, bi in _xabc_combos(pivots, ci, ci, mb):
+                out.append({"X": pivots[xi], "A": pivots[ai], "B": pivots[bi], "C": pivots[ci], "D": D,
+                            "direction": direction_of(pivots[ci]), "d_projected": False})
     return out
 
 
@@ -163,6 +237,15 @@ def match_pattern(structures: list[dict]) -> list[dict]:
         if best_for_struct:
             best_for_struct.sort(key=lambda m: m["deviation_avg"])
             matches.append(best_for_struct[0])
+    if settings.HARMONIC_COMBO_SEARCH:
+        # banyak X/A/B untuk C (dan D) yang sama → simpan satu: deviasi rata-rata terkecil
+        best: dict = {}
+        for m in matches:
+            s_ = m["structure"]
+            key = (s_["C"]["idx"], s_["D"]["idx"] if s_["D"] else None)
+            if key not in best or m["deviation_avg"] < best[key]["deviation_avg"]:
+                best[key] = m
+        matches = list(best.values())
     return matches
 
 

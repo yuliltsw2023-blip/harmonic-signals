@@ -14,6 +14,12 @@ MIN_LEG_ATR = 1.0
 PRZ_APPROACH_PCT = 0.0035
 # Completed D: pivot D harus terbentuk maksimal N bar yang lalu.
 MAX_D_AGE_BARS = 6
+# Pencarian kombinasi pivot (28 Sep 2026): X/A/B tidak harus pivot berurutan — dipilih
+# dari COMBO_MAX_BACK pivot sebelum C dengan syarat A/B/X ekstrem di segmennya, dan C boleh
+# pivot kedua terakhir kalau leg CD sedang berjalan (pivot terakhir belum melewati C).
+# Default aktif sejak 28 Sep 2026 (backtest v21_combo); false = perilaku lama (hanya 4–5 pivot terakhir).
+HARMONIC_COMBO_SEARCH = os.environ.get("HARMONIC_COMBO_SEARCH", "true").strip().lower() == "true"
+COMBO_MAX_BACK = int(os.environ.get("COMBO_MAX_BACK", "10").strip() or 10)
 # PRZ zone valid kalau range < 0.5% (forex). Level di luar band ini tidak
 # dihitung sebagai confluence.
 PRZ_BAND_PCT = 0.005
@@ -97,9 +103,10 @@ CLAUDE_MAX_TOKENS = 4096
 POC_ENABLED = os.environ.get("POC_ENABLED", "true").lower() == "true"
 # Timeframe yang di-screen POC untuk forex/metal/crypto (profile TPO). D1 sengaja
 # tidak: backtest 24 Sep 2026 (31 simbol, 2021–2026) POC D1 = 172 trade, PF 0.74–0.78,
-# −24R; H1/H4 ≈ impas. Saham (Yahoo, volume asli, D1) tidak terpengaruh.
+# −24R; H1/H4 ≈ impas. H4 juga dimatikan 28 Sep 2026 (backtest v21: POC H4 439 trade,
+# netPF 0.92, −21R). Saham (Yahoo, volume asli, D1) tidak terpengaruh.
 POC_TIMEFRAMES = tuple(
-    t.strip().upper() for t in os.environ.get("POC_TIMEFRAMES", "H1,H4").split(",") if t.strip()
+    t.strip().upper() for t in os.environ.get("POC_TIMEFRAMES", "H1").split(",") if t.strip()
 )
 # Pivot N kiri/kanan per timeframe (skill: 5 untuk H1–H4, 3 untuk D1+).
 POC_PIVOT = {"M15": 5, "M30": 5, "H1": 5, "H4": 5, "D1": 3}
