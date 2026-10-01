@@ -7,7 +7,7 @@ on:
     # Sabtu–Minggu forex tutup: run cuma buang ~1 menit setup tanpa hasil
     # (≈200 menit/bulan). Crypto (BTC/ETH) sengaja ikut libur — skill: hindari
     # entry weekend, volume tipis.
-    - cron: "1 * * * 1-5"
+    - cron: "17 * * * 1-5"
   workflow_dispatch:
     inputs:
       force:

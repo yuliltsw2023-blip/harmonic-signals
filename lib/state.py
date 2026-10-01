@@ -128,3 +128,21 @@ def halt_flag() -> bool:
         return _memory.get(HALT_KEY) in ("1", "true")
     v = r.get(HALT_KEY)
     return str(v).lower() in ("1", "true") if v is not None else False
+
+
+# ---------------------------------------------------------------------------
+# Nilai kecil lintas-run (mis. scan:last:H4 untuk penjadwal scripts/scan_hourly.py)
+# ---------------------------------------------------------------------------
+
+def get_value(key: str) -> str | None:
+    r = _client()
+    v = _memory.get(key) if r is None else r.get(key)
+    return None if v is None else str(v)
+
+
+def set_value(key: str, value: str, ttl_seconds: int = 604800) -> None:
+    r = _client()
+    if r is None:
+        _memory[key] = value
+        return
+    r.set(key, value, ex=ttl_seconds)
