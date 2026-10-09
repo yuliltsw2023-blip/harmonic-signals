@@ -1,10 +1,12 @@
 name: Scan Stocks D1 (Harmonic + POC Pullback)
 
 on:
-  schedule:
-    # UTC, Senin–Jumat. Data Yahoo Finance (tanpa key).
-    - cron: "15 9 * * 1-5"    # 16:15 WIB — setelah tutup IDX → market=idx (auto)
-    - cron: "15 21 * * 1-5"   # 17:15 ET — setelah tutup NYSE/NASDAQ → market=us (auto)
+  # Cron DIMATIKAN 9 Okt 2026: Harmonic/POC dipending. Aktifkan lagi: hapus tanda #
+  # di tiga baris schedule/cron di bawah.
+  # UTC, Senin–Jumat. Data Yahoo Finance (tanpa key).
+  # schedule:
+  #   - cron: "15 9 * * 1-5"    # 16:15 WIB — setelah tutup IDX → market=idx (auto)
+  #   - cron: "15 21 * * 1-5"   # 17:15 ET — setelah tutup NYSE/NASDAQ → market=us (auto)
   workflow_dispatch:
     inputs:
       market:
