@@ -77,4 +77,18 @@ def send(text: str) -> None:
         "chat_id": chat, "text": text, "parse_mode": "HTML",
         "disable_web_page_preview": True}, timeout=30)
     if not r.ok:
-        raise RuntimeError(f"Telegram {r.status_code}: {r.text[:200]}")
+        raise RuntimeError(f"Telegram {r.status_code}: {r.text[:200]} | {_diagnose(token, chat)}")
+
+
+def _diagnose(token: str, chat: str) -> str:
+    """Info aman untuk log: bot mana yang dipakai & bentuk chat id (tanpa membuka secret)."""
+    try:
+        me = requests.get(f"https://api.telegram.org/bot{token}/getMe", timeout=15).json()
+        bot = "@" + me["result"]["username"] if me.get("ok") else f"token tidak valid ({me.get('description')})"
+    except Exception as e:  # noqa: BLE001
+        bot = f"getMe gagal ({e.__class__.__name__})"
+    c = chat.strip()
+    shape = (f"chat_id panjang {len(chat)} karakter"
+             f"{' (ada spasi/enter!)' if c != chat else ''}, awalan '{c[:4]}', "
+             f"{'format -100… benar' if c.startswith('-100') and c[1:].isdigit() else 'format BUKAN -100…'}")
+    return f"bot={bot}; {shape}"
