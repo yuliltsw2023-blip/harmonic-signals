@@ -1,0 +1,376 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gold Briefing</title>
+<style>
+:root{
+  --bg:#f7f5f0; --panel:#ffffff; --ink:#1d1b16; --muted:#6b665b; --line:#e4dfd3;
+  --gold:#b8860b; --gold-soft:#f3e6c4; --bull:#15803d; --bear:#c2410c; --side:#6b7280;
+  --bull-soft:#e3f3e8; --bear-soft:#fbe9df; --side-soft:#eceef1;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#14130f; --panel:#1d1b16; --ink:#efe9dc; --muted:#a39d8f; --line:#2f2c25;
+  --gold:#e0b44c; --gold-soft:#3a3020; --bull:#4ade80; --bear:#fb923c; --side:#9ca3af;
+  --bull-soft:#173322; --bear-soft:#3a2417; --side-soft:#26282c;}}
+:root[data-theme="dark"]{
+  --bg:#14130f; --panel:#1d1b16; --ink:#efe9dc; --muted:#a39d8f; --line:#2f2c25;
+  --gold:#e0b44c; --gold-soft:#3a3020; --bull:#4ade80; --bear:#fb923c; --side:#9ca3af;
+  --bull-soft:#173322; --bear-soft:#3a2417; --side-soft:#26282c;}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+a{color:var(--gold)}
+header{display:flex;gap:16px;align-items:center;flex-wrap:wrap;padding:14px 20px;border-bottom:1px solid var(--line);background:var(--panel);position:sticky;top:0;z-index:5}
+header h1{font-size:18px;margin:0;letter-spacing:.3px}
+header h1 span{color:var(--gold)}
+.stat{font-size:13px;color:var(--muted)} .stat b{color:var(--ink);font-size:15px}
+nav{margin-left:auto;display:flex;gap:4px}
+nav button{border:1px solid var(--line);background:transparent;color:var(--ink);padding:6px 12px;border-radius:8px;cursor:pointer;font:inherit;font-size:14px}
+nav button.on{background:var(--gold-soft);border-color:var(--gold)}
+main{display:grid;grid-template-columns:300px 1fr;gap:16px;padding:16px 20px;max-width:1500px;margin:0 auto}
+@media (max-width:900px){main{grid-template-columns:1fr;padding:12px 16px}#list{max-height:240px}}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+#list{overflow:auto;max-height:calc(100vh - 110px);padding:6px}
+.day{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;margin:12px 8px 4px}
+.item{padding:8px 10px;border-radius:8px;cursor:pointer;border:1px solid transparent}
+.item:hover{background:var(--bg)} .item.on{border-color:var(--gold);background:var(--gold-soft)}
+.item .top{display:flex;gap:6px;align-items:center;font-size:13px}
+.item .hl{font-size:13px;color:var(--muted);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.badge{display:inline-block;padding:1px 8px;border-radius:99px;font-size:12px;font-weight:600}
+.bullish{color:var(--bull);background:var(--bull-soft)} .bearish{color:var(--bear);background:var(--bear-soft)}
+.sideways,.netral{color:var(--side);background:var(--side-soft)}
+.hit{color:var(--bull)} .miss{color:var(--bear)}
+#chartWrap{position:relative} #chart{height:430px}
+@media (max-width:900px){#chart{height:320px}}
+.toolbar{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:8px;font-size:13px;color:var(--muted)}
+.toolbar button{border:1px solid var(--line);background:transparent;color:var(--ink);padding:3px 10px;border-radius:6px;cursor:pointer;font:inherit}
+.toolbar button.on{border-color:var(--gold);background:var(--gold-soft)}
+.legend{margin-left:auto;display:flex;gap:10px;flex-wrap:wrap}
+#tip{position:absolute;z-index:4;pointer-events:none;max-width:340px;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:12.5px;box-shadow:0 6px 20px rgba(0,0,0,.15);display:none}
+#tip div+div{margin-top:4px;padding-top:4px;border-top:1px dashed var(--line)}
+h2{font-size:20px;margin:4px 0 6px;line-height:1.35} h3{font-size:14px;margin:18px 0 8px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted)}
+.meta{font-size:13px;color:var(--muted)}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}
+.card{border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+.bias{display:flex;gap:12px;align-items:center;border-radius:10px;padding:12px 14px;margin:10px 0}
+.bias .big{font-size:22px;font-weight:700}
+table{width:100%;border-collapse:collapse;font-size:13.5px}
+th,td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:12px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.4px}
+td.num{font-variant-numeric:tabular-nums;white-space:nowrap}
+.scroll{overflow-x:auto}
+ul.f{margin:0;padding-left:18px} ul.f li{margin:4px 0}
+details summary{cursor:pointer;color:var(--muted);font-size:13px;margin-top:12px}
+.up{color:var(--bull)} .down{color:var(--bear)}
+.empty{color:var(--muted);padding:40px;text-align:center}
+.hide{display:none!important}
+.calday{margin-top:14px;font-weight:600}
+.rel-tinggi{border-left:3px solid var(--gold)} .past{opacity:.55}
+.foot{font-size:12px;color:var(--muted);margin-top:14px}
+</style>
+</head>
+<body>
+<header>
+  <h1><span>●</span> Gold Briefing</h1>
+  <div class="stat" id="hdrPrice"></div>
+  <div class="stat" id="hdrAcc"></div>
+  <nav>
+    <button data-tab="brief" class="on">Briefing</button>
+    <button data-tab="cal">Kalender</button>
+    <button data-tab="acc">Akurasi</button>
+  </nav>
+</header>
+
+<main id="tab-brief">
+  <aside class="panel" id="list"></aside>
+  <section>
+    <div class="panel">
+      <div class="toolbar">
+        <span>XAU/USD</span>
+        <button data-tf="15min" class="on">15m</button><button data-tf="1h">1J</button><button data-tf="4h">4J</button>
+        <a id="tvLink" href="https://www.tradingview.com/chart/?symbol=OANDA%3AXAUUSD" target="_blank" rel="noopener">Buka di TradingView ↗</a>
+        <span class="legend"><span class="up">▲ berita bullish</span><span class="down">▼ berita bearish</span><span>● netral</span><span>■ event kalender</span></span>
+      </div>
+      <div id="chartWrap"><div id="chart"></div><div id="tip"></div></div>
+      <div class="foot">Arahkan kursor ke penanda untuk melihat berita/event. Garis hijau/oranye = support/resistance briefing yang dipilih. Klik baris berita di bawah untuk lompat ke waktunya.</div>
+    </div>
+    <div class="panel" id="detail" style="margin-top:16px"><div class="empty">Memuat…</div></div>
+  </section>
+</main>
+
+<main id="tab-cal" class="hide" style="grid-template-columns:1fr"><section class="panel" id="calView"></section></main>
+<main id="tab-acc" class="hide" style="grid-template-columns:1fr"><section class="panel" id="accView"></section></main>
+
+<script src="https://unpkg.com/lightweight-charts@4.2.3/dist/lightweight-charts.standalone.production.js"></script>
+<script>
+const $ = (s, el = document) => el.querySelector(s);
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const HARI = ["Min", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab"];
+const fmtWib = (t, withDay = true) => {
+  const d = new Date((t + 7 * 3600) * 1000);
+  const hh = String(d.getUTCHours()).padStart(2, "0"), mm = String(d.getUTCMinutes()).padStart(2, "0");
+  const day = `${HARI[d.getUTCDay()]} ${d.getUTCDate()}/${d.getUTCMonth() + 1}`;
+  return withDay ? `${day} ${hh}:${mm}` : `${hh}:${mm}`;
+};
+const dayKey = (t) => new Date((t + 7 * 3600) * 1000).toISOString().slice(0, 10);
+const badge = (dir) => `<span class="badge ${esc(dir)}">${esc(String(dir).toUpperCase())}</span>`;
+const n2 = (x) => (x == null ? "-" : Number(x).toLocaleString("id-ID", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+
+let INDEX = [], CAL = [], CANDLES = [], TF = "15min", CUR = null, chart, series, priceLines = [];
+const TF_SEC = { "15min": 900, "1h": 3600, "4h": 14400 };
+// Lightweight Charts menampilkan waktu sebagai UTC → geser +7 jam supaya sumbu waktu = WIB.
+const OFF = 7 * 3600;
+const fmtShifted = (t) => fmtWib(t - OFF);
+
+async function getJSON(u) { const r = await fetch(u, { cache: "no-store" }); if (!r.ok) throw new Error(u + " " + r.status); return r.json(); }
+
+function initChart() {
+  chart = LightweightCharts.createChart($("#chart"), {
+    autoSize: true,
+    layout: { background: { color: "transparent" }, textColor: css("--muted"), fontFamily: "system-ui" },
+    grid: { vertLines: { color: css("--line") }, horzLines: { color: css("--line") } },
+    timeScale: { timeVisible: true, borderColor: css("--line") },
+    rightPriceScale: { borderColor: css("--line") },
+    localization: { timeFormatter: (t) => fmtShifted(t) + " WIB" },
+    crosshair: { mode: 0 },
+  });
+  series = chart.addCandlestickSeries({
+    upColor: css("--bull"), downColor: css("--bear"), wickUpColor: css("--bull"), wickDownColor: css("--bear"), borderVisible: false,
+  });
+  chart.subscribeCrosshairMove(showTip);
+}
+
+function bucket(t) { const s = TF_SEC[TF]; return Math.floor(t / s) * s; }
+
+function markerData() {
+  const items = [];
+  for (const m of INDEX) for (const k of m.markers || []) items.push({ ...k, kind: "news" });
+  for (const e of CAL) if (e.gold === "tinggi") items.push({ t: e.t, title: `${e.country} ${e.title}`, kind: "event", e });
+  const first = CANDLES.length ? CANDLES[0][0] : 0, last = CANDLES.length ? CANDLES[CANDLES.length - 1][0] + TF_SEC[TF] : 0;
+  const seen = new Map();
+  for (const it of items) {
+    if (it.t < first || it.t > last + 86400) continue;
+    const b = bucket(it.t);
+    if (!seen.has(b)) seen.set(b, []);
+    const arr = seen.get(b);
+    if (!arr.some((x) => x.title === it.title)) arr.push(it);
+  }
+  return seen;
+}
+
+let MARKS = new Map();
+function drawMarkers() {
+  MARKS = markerData();
+  const ms = [];
+  const barTimes = new Set(CANDLES.map((c) => c[0]));
+  for (const [b, arr] of [...MARKS.entries()].sort((a, c) => a[0] - c[0])) {
+    if (!barTimes.has(b)) continue;
+    const tt = b + OFF;
+    const news = arr.filter((x) => x.kind === "news"), ev = arr.filter((x) => x.kind === "event");
+    if (ev.length) ms.push({ time: tt, position: "belowBar", shape: "square", color: css("--gold"), size: 0.8 });
+    if (news.length) {
+      const bull = news.filter((x) => x.effect === "bullish").length, bear = news.filter((x) => x.effect === "bearish").length;
+      const dir = bull > bear ? "bullish" : bear > bull ? "bearish" : "netral";
+      ms.push({
+        time: tt, position: dir === "bearish" ? "aboveBar" : "belowBar",
+        shape: dir === "bullish" ? "arrowUp" : dir === "bearish" ? "arrowDown" : "circle",
+        color: dir === "bullish" ? css("--bull") : dir === "bearish" ? css("--bear") : css("--side"),
+        size: news.some((x) => x.impact === "tinggi") ? 1.4 : 0.9,
+      });
+    }
+  }
+  ms.sort((a, c) => a.time - c.time);
+  series.setMarkers(ms);
+}
+
+function showTip(p) {
+  const tip = $("#tip");
+  const key = p.time - OFF;
+  if (!p.time || !p.point || !MARKS.has(key)) { tip.style.display = "none"; return; }
+  const arr = MARKS.get(key);
+  tip.innerHTML = arr.slice(0, 6).map((x) => x.kind === "event"
+    ? `<div>■ <b>${fmtWib(x.t, false)}</b> ${esc(x.title)}<br><span class="meta">f: ${esc(x.e.forecast || "-")} · p: ${esc(x.e.previous || "-")}</span></div>`
+    : `<div>${badge(x.effect)} <b>${fmtWib(x.t, false)}</b> ${esc(x.title)}</div>`).join("");
+  tip.style.display = "block";
+  const w = $("#chartWrap").clientWidth;
+  tip.style.left = Math.min(p.point.x + 14, w - 350) + "px";
+  tip.style.top = Math.max(p.point.y - 20, 0) + "px";
+}
+
+async function loadCandles(endTs) {
+  const q = new URLSearchParams({ interval: TF });
+  if (endTs) q.set("end", endTs);
+  try {
+    const bars = await getJSON("/api/candles?" + q);
+    CANDLES = bars;
+    series.setData(bars.map((b) => ({ time: b[0] + OFF, open: b[1], high: b[2], low: b[3], close: b[4] })));
+    drawMarkers();
+  } catch (e) { $("#chart").insertAdjacentHTML("beforeend", `<div class="empty">Gagal memuat harga: ${esc(e.message)}</div>`); }
+}
+
+function priceAfter(t, secs) {
+  // close candle pertama setelah t dan setelah t+secs → reaksi harga
+  const i0 = CANDLES.findIndex((c) => c[0] >= t);
+  if (i0 < 0) return null;
+  const base = CANDLES[i0][1];
+  const j = CANDLES.findIndex((c) => c[0] >= t + secs);
+  if (j < 0) return null;
+  return CANDLES[j][1] - base;
+}
+
+function renderList() {
+  const el = $("#list");
+  if (!INDEX.length) { el.innerHTML = '<div class="empty">Belum ada briefing.</div>'; return; }
+  let html = "", last = "";
+  for (const m of [...INDEX].reverse()) {
+    const dk = dayKey(m.t);
+    if (dk !== last) { html += `<div class="day">${esc(fmtWib(m.t).split(" ").slice(0, 2).join(" "))}</div>`; last = dk; }
+    const ev = m.eval ? `<span class="${m.eval.hit ? "hit" : "miss"}" title="hasil: ${esc(m.eval.actual)}">${m.eval.hit ? "✓" : "✗"}</span>` : "";
+    html += `<div class="item ${CUR && CUR.id === m.id ? "on" : ""}" data-id="${esc(m.id)}">
+      <div class="top"><b>${fmtWib(m.t, false)}</b> ${esc(m.slot_label)} ${badge(m.bias)} ${ev}</div>
+      <div class="hl">${esc(m.headline)}</div></div>`;
+  }
+  el.innerHTML = html;
+  el.querySelectorAll(".item").forEach((it) => it.onclick = () => openReport(it.dataset.id));
+}
+
+function factorList(arr) {
+  if (!arr || !arr.length) return '<div class="meta">-</div>';
+  return `<ul class="f">${arr.map((f) => `<li>${badge(f.effect)} <b>${esc(f.factor)}</b> — ${esc(f.view)}</li>`).join("")}</ul>`;
+}
+
+function renderDetail(r) {
+  const a = r.analysis, b = a.bias;
+  const sess = r.sessions.map((s) => `<tr><td><b>${esc(s.name)}</b><br><span class="meta">${esc(s.day)} · ${esc(s.hours_wib)}${s.complete ? "" : " · berjalan"}</span></td>
+    <td>${badge(s.label)}</td><td class="num">${n2(s.open)} → ${n2(s.close)}</td>
+    <td class="num ${s.change >= 0 ? "up" : "down"}">${s.change >= 0 ? "+" : ""}${n2(s.change)}</td>
+    <td class="num">${n2(s.range)} <span class="meta">(${Math.round(s.range_vs_adr * 100)}% ADR)</span></td></tr>`).join("");
+  const news = r.key_news.map((n) => {
+    const r1 = priceAfter(n.t, 3600), r4 = priceAfter(n.t, 4 * 3600);
+    const rc = (x) => x == null ? '<span class="meta">-</span>' : `<span class="${x >= 0 ? "up" : "down"}">${x >= 0 ? "+" : ""}${x.toFixed(1)}</span>`;
+    return `<tr data-t="${n.t}" style="cursor:pointer"><td class="num">${fmtWib(n.t)}</td><td>${badge(n.effect)}<br><span class="meta">${esc(n.impact)}</span></td>
+      <td><a href="${esc(n.url)}" target="_blank" rel="noopener">${esc(n.title)}</a><br><span class="meta">${esc(n.source)} — ${esc(n.why)}</span></td>
+      <td class="num">${rc(r1)}</td><td class="num">${rc(r4)}</td></tr>`;
+  }).join("");
+  const macro = Object.entries(r.macro || {}).map(([k, v]) => `<tr><td>${esc(k)}</td><td class="num">${v.last}</td>
+    <td class="num ${v.chg_1d_pct >= 0 ? "up" : "down"}">${v.chg_1d_pct >= 0 ? "+" : ""}${v.chg_1d_pct}%</td><td class="num">${v.chg_5d_pct >= 0 ? "+" : ""}${v.chg_5d_pct}%</td></tr>`).join("");
+  const p = r.price;
+  const allNews = r.news.map((n) => `<li><span class="meta">${fmtWib(n.t)} · ${esc(n.source)}</span> <a href="${esc(n.url)}" target="_blank" rel="noopener">${esc(n.title)}</a></li>`).join("");
+  $("#detail").innerHTML = `
+    <div class="meta">${esc(r.slot_label)} · ${fmtWib(r.t)} WIB · XAU/USD ${n2(p.last)}</div>
+    <h2>${esc(a.headline)}</h2>
+    <div class="bias ${esc(b.direction)}"><div><div class="meta">Outlook ${esc(r.target_label)}</div><div class="big">${esc(b.direction.toUpperCase())}</div><div class="meta">keyakinan ${esc(b.confidence)}</div></div><div>${esc(b.reason)}</div></div>
+    ${r.prev_eval ? `<div class="meta">Outlook ${esc(r.prev_eval.session_name)} sebelumnya: ${esc(r.prev_eval.predicted)} → hasil ${esc(r.prev_eval.actual)} <b class="${r.prev_eval.hit ? "hit" : "miss"}">${r.prev_eval.hit ? "TEPAT" : "MELESET"}</b></div>` : ""}
+    <h3>Ulasan sesi</h3><p>${esc(a.session_review)}</p>
+    <div class="scroll"><table><tr><th>Sesi</th><th>Hasil</th><th>Open → Close</th><th>Δ</th><th>Range</th></tr>${sess}</table></div>
+    <div class="meta" style="margin-top:6px">Hari ini H ${n2(p.day_high)} / L ${n2(p.day_low)} · kemarin H ${n2(p.prev_high)} / L ${n2(p.prev_low)} · minggu ini H ${n2(p.week_high)} / L ${n2(p.week_low)} · ADR20 ${n2(p.adr)}</div>
+    <div class="grid" style="margin-top:12px">
+      <div class="card"><h3 style="margin-top:0">Makro</h3>${factorList(a.macro)}</div>
+      <div class="card"><h3 style="margin-top:0">Mikro</h3>${factorList(a.micro)}</div>
+    </div>
+    <h3>Berita kunci & reaksi harga</h3>
+    ${news ? `<div class="scroll"><table><tr><th>Waktu WIB</th><th>Efek</th><th>Berita</th><th>+1 jam</th><th>+4 jam</th></tr>${news}</table></div>` : '<div class="meta">Tidak ada berita berdampak.</div>'}
+    <h3>Event berisiko</h3>
+    ${a.event_risks.length ? `<ul class="f">${a.event_risks.map((e) => `<li><b>${esc(e.time_wib)}</b> ${esc(e.event)} — ${esc(e.scenario)}</li>`).join("")}</ul>` : '<div class="meta">-</div>'}
+    <div class="grid" style="margin-top:12px">
+      <div class="card"><h3 style="margin-top:0">Level</h3>
+        <div>Support: <b class="up">${a.levels.support.map(n2).join(" · ") || "-"}</b></div>
+        <div>Resistance: <b class="down">${a.levels.resistance.map(n2).join(" · ") || "-"}</b></div></div>
+      <div class="card"><h3 style="margin-top:0">Skenario</h3><ul class="f">${a.scenarios.map((s) => `<li><b>Jika</b> ${esc(s.if_)} <b>→</b> ${esc(s.then)}</li>`).join("")}</ul></div>
+    </div>
+    ${macro ? `<h3>Pasar terkait</h3><div class="scroll"><table><tr><th>Aset</th><th>Terakhir</th><th>1 hari</th><th>5 hari</th></tr>${macro}</table></div>` : ""}
+    <details><summary>Semua berita yang dibaca (${r.news.length})</summary><ul class="f" style="font-size:13px">${allNews}</ul></details>
+    <div class="foot">Konteks pasar, bukan sinyal entry. Model ${esc(r.usage?.model || "")}${r.source_errors?.length ? " · sumber gagal: " + esc(r.source_errors.join(", ")) : ""}</div>`;
+  $("#detail").querySelectorAll("tr[data-t]").forEach((tr) => tr.onclick = (ev) => {
+    if (ev.target.tagName === "A") return;
+    const t = +tr.dataset.t, w = TF_SEC[TF] * 60;
+    chart.timeScale().setVisibleRange({ from: t - w + OFF, to: t + w + OFF });
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  });
+}
+
+function drawLevels(r) {
+  priceLines.forEach((l) => series.removePriceLine(l)); priceLines = [];
+  for (const x of r.analysis.levels.support) priceLines.push(series.createPriceLine({ price: x, color: css("--bull"), lineWidth: 1, lineStyle: 2, title: "S" }));
+  for (const x of r.analysis.levels.resistance) priceLines.push(series.createPriceLine({ price: x, color: css("--bear"), lineWidth: 1, lineStyle: 2, title: "R" }));
+}
+
+async function openReport(id) {
+  const r = await getJSON(`/data/reports/${encodeURIComponent(id)}.json`);
+  CUR = r; history.replaceState(null, "", "#r=" + encodeURIComponent(id));
+  renderList();
+  const latest = INDEX.length && INDEX[INDEX.length - 1].id === id;
+  const span = TF_SEC[TF] * 1900;
+  const needEnd = !latest && (Date.now() / 1000 - r.t) > span * 0.6;
+  if (needEnd || !CANDLES.length || (CANDLES.length && r.t < CANDLES[0][0])) await loadCandles(needEnd ? Math.min(Math.floor(Date.now() / 1000), r.t + 3 * 86400) : 0);
+  renderDetail(r); drawLevels(r);
+  const w = TF_SEC[TF] * 120;
+  chart.timeScale().setVisibleRange({ from: r.t - w + OFF, to: r.t + w / 3 + OFF });
+}
+
+function renderCal() {
+  const now = Date.now() / 1000;
+  const rows = CAL.filter((e) => e.gold !== "rendah" || e.country === "USD");
+  let html = "<h2>Kalender event emas</h2><div class='meta'>Sumber ForexFactory. Garis emas di kiri = relevansi tinggi untuk emas. Jam WIB.</div>", last = "";
+  for (const e of rows) {
+    const dk = dayKey(e.t);
+    if (dk !== last) { html += `<div class="calday">${esc(fmtWib(e.t).split(" ").slice(0, 2).join(" "))}</div>`; last = dk; }
+    html += `<div class="card rel-${esc(e.gold)} ${e.t < now ? "past" : ""}" style="margin-top:6px;display:flex;gap:10px;flex-wrap:wrap">
+      <b class="num">${fmtWib(e.t, false)}</b><span class="badge ${e.impact === "High" ? "bearish" : "sideways"}">${esc(e.country)} · ${esc(e.impact)}</span>
+      <span style="flex:1;min-width:180px">${esc(e.title)}</span><span class="meta">forecast ${esc(e.forecast || "-")} · prev ${esc(e.previous || "-")} · emas: ${esc(e.gold)}</span></div>`;
+  }
+  $("#calView").innerHTML = html;
+}
+
+function accStats(list) {
+  const ev = list.filter((m) => m.eval);
+  const hit = ev.filter((m) => m.eval.hit).length;
+  return { n: ev.length, hit, pct: ev.length ? Math.round(hit / ev.length * 100) : null };
+}
+
+function renderAcc() {
+  const all = accStats(INDEX);
+  const by = {};
+  for (const m of INDEX) (by[m.slot_label] ||= []).push(m);
+  const rows = INDEX.filter((m) => m.eval).reverse().map((m) => `<tr><td class="num">${fmtWib(m.t)}</td><td>${esc(m.slot_label)}</td><td>${badge(m.bias)}</td><td>${badge(m.eval.actual)}</td>
+    <td class="num ${m.eval.change >= 0 ? "up" : "down"}">${m.eval.change >= 0 ? "+" : ""}${n2(m.eval.change)}</td><td class="${m.eval.hit ? "hit" : "miss"}">${m.eval.hit ? "✓" : "✗"}</td></tr>`).join("");
+  $("#accView").innerHTML = `<h2>Akurasi outlook</h2>
+    <div class="meta">Outlook tiap briefing dicocokkan otomatis dengan label sesi target setelah sesinya selesai. Tebakan acak 3 pilihan ≈ 33%; jangan percaya angka sebelum ada ±50 sampel.</div>
+    <div class="grid" style="margin:12px 0">${[["Semua", all], ...Object.entries(by).map(([k, v]) => [k, accStats(v)])].map(([k, s]) =>
+      `<div class="card"><div class="meta">${esc(k)}</div><div class="big" style="font-size:22px;font-weight:700">${s.pct == null ? "-" : s.pct + "%"}</div><div class="meta">${s.hit}/${s.n} tepat</div></div>`).join("")}</div>
+    ${rows ? `<div class="scroll"><table><tr><th>Briefing</th><th>Slot</th><th>Outlook</th><th>Hasil</th><th>Δ sesi</th><th></th></tr>${rows}</table></div>` : '<div class="meta">Belum ada outlook yang sesinya selesai.</div>'}`;
+}
+
+function header() {
+  const m = INDEX[INDEX.length - 1];
+  if (m) $("#hdrPrice").innerHTML = `XAU/USD <b>${n2(m.price)}</b> · ${esc(m.slot_label)} ${fmtWib(m.t)} → ${badge(m.bias)}`;
+  const s = accStats(INDEX);
+  $("#hdrAcc").innerHTML = s.n ? `Akurasi outlook <b>${s.pct}%</b> (${s.hit}/${s.n})` : "";
+}
+
+document.querySelectorAll("nav button").forEach((b) => b.onclick = () => {
+  document.querySelectorAll("nav button").forEach((x) => x.classList.toggle("on", x === b));
+  for (const t of ["brief", "cal", "acc"]) $("#tab-" + t).classList.toggle("hide", t !== b.dataset.tab);
+});
+document.querySelectorAll("[data-tf]").forEach((b) => b.onclick = async () => {
+  document.querySelectorAll("[data-tf]").forEach((x) => x.classList.toggle("on", x === b));
+  TF = b.dataset.tf; CANDLES = [];
+  if (CUR) await openReport(CUR.id); else await loadCandles(0);
+});
+
+(async function boot() {
+  initChart();
+  try {
+    [INDEX, CAL] = await Promise.all([getJSON("/data/index.json"), getJSON("/data/calendar.json").catch(() => [])]);
+  } catch (e) { $("#detail").innerHTML = `<div class="empty">Data belum ada: ${esc(e.message)}</div>`; return; }
+  header(); renderList(); renderCal(); renderAcc();
+  await loadCandles(0);
+  const want = decodeURIComponent((location.hash.match(/r=([^&]+)/) || [])[1] || "");
+  const id = INDEX.some((m) => m.id === want) ? want : (INDEX[INDEX.length - 1] || {}).id;
+  if (id) await openReport(id); else $("#detail").innerHTML = '<div class="empty">Belum ada briefing.</div>';
+})();
+</script>
+</body>
+</html>
