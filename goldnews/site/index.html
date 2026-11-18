@@ -51,7 +51,12 @@ main{display:grid;grid-template-columns:300px 1fr;gap:16px;padding:16px 20px;max
 #tip div+div{margin-top:4px;padding-top:4px;border-top:1px dashed var(--line)}
 h2{font-size:20px;margin:4px 0 6px;line-height:1.35} h3{font-size:14px;margin:18px 0 8px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted)}
 .meta{font-size:13px;color:var(--muted)}
-.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(260px,100%),1fr));gap:12px}
+main>section,main>aside,.card,.panel{min-width:0}
+.card{overflow-wrap:anywhere}
+.lv{display:flex;flex-wrap:wrap;gap:4px 16px;margin:6px 0;font-variant-numeric:tabular-nums}
+body{overflow-x:hidden}
+@media (max-width:600px){header{padding:10px 16px}nav{margin-left:0}.legend{margin-left:0}}
 .card{border:1px solid var(--line);border-radius:10px;padding:10px 12px}
 .bias{display:flex;gap:12px;align-items:center;border-radius:10px;padding:12px 14px;margin:10px 0}
 .bias .big{font-size:22px;font-weight:700}
@@ -241,6 +246,36 @@ function factorList(arr) {
   return `<ul class="f">${arr.map((f) => `<li>${badge(f.effect)} <b>${esc(f.factor)}</b> — ${esc(f.view)}</li>`).join("")}</ul>`;
 }
 
+const RES = { tp2: "✅ TP2", tp1: "✅ TP1", sl: "❌ SL", expired: "⌛ kedaluwarsa", not_filled: "⏹ tidak terisi" };
+function planEval(id, i) { const m = INDEX.find((x) => x.id === id); return m && m.plan_evals ? m.plan_evals[i] : null; }
+function planSection(r) {
+  const tr = r.trade;
+  if (!tr) return "";
+  const t = tr.trend;
+  const cards = tr.plans.map((p, i) => {
+    const ev = planEval(r.id, i);
+    const evs = ev ? `<div style="margin-top:6px"><b>Hasil:</b> ${RES[ev.result] || esc(ev.result)}${ev.result === "not_filled" ? "" : ` (${ev.r >= 0 ? "+" : ""}${ev.r}R)`}</div>` : '<div class="meta" style="margin-top:6px">Hasil: belum selesai</div>';
+    if (p.action === "no_trade") return `<div class="card"><div class="meta">${esc(p.style)} · ${esc(p.tf)}</div><div class="big" style="font-size:18px;font-weight:700">Tidak ada setup</div>
+      <div>${esc(p.reason)}</div>${p.rejected ? `<div class="meta">usulan ${esc((p.action_proposed || "").toUpperCase())} ditolak: ${esc(p.rejected)}</div>` : ""}</div>`;
+    return `<div class="card plan" data-i="${i}" style="cursor:pointer"><div class="meta">${esc(p.style)} · ${esc(p.tf)} · klik untuk gambar di chart</div>
+      <div style="font-size:18px;font-weight:700" class="${p.action === "buy" ? "up" : "down"}">${esc(p.action.toUpperCase())} ${esc(p.order.toUpperCase())}</div>
+      <div class="lv"><span>Entry <b>${n2(p.entry)}</b></span><span>SL <b class="down">${n2(p.sl)}</b></span>
+      <span>TP1 <b class="up">${n2(p.tp1)}</b> <span class="meta">${p.rr1}R</span></span><span>TP2 <b class="up">${n2(p.tp2)}</b> <span class="meta">${p.rr2}R</span></span></div>
+      <div class="meta">berlaku ± ${p.valid_hours} jam · risiko ${n2(p.risk)}</div>
+      <div>${esc(p.reason)}</div><div class="meta">Batal jika: ${esc(p.invalidation)}</div>${evs}</div>`;
+  }).join("");
+  const d = (x) => badge(x);
+  return `<h3>Rencana trading</h3>
+    <div class="meta">Tren: H4 ${d(t.h4)} H1 ${d(t.h1)} M15 ${d(t.m15)} M5 ${d(t.m5)}</div><p>${esc(t.summary)}</p>
+    <div class="grid">${cards}</div>
+    <div class="foot">Rencana dibuat dari candle asli + aturan, dinilai otomatis dari candle M5 (SL dihitung lebih dulu kalau kena di candle yang sama). Bukan sinyal pasti.</div>`;
+}
+function drawPlan(p) {
+  priceLines.forEach((l) => series.removePriceLine(l)); priceLines = [];
+  const add = (price, color, title, style = 2) => priceLines.push(series.createPriceLine({ price, color, lineWidth: 1, lineStyle: style, title }));
+  add(p.entry, css("--gold"), "Entry", 0); add(p.sl, css("--bear"), "SL"); add(p.tp1, css("--bull"), "TP1"); add(p.tp2, css("--bull"), "TP2");
+}
+
 function renderDetail(r) {
   const a = r.analysis, b = a.bias;
   const sess = r.sessions.map((s) => `<tr><td><b>${esc(s.name)}</b><br><span class="meta">${esc(s.day)} · ${esc(s.hours_wib)}${s.complete ? "" : " · berjalan"}</span></td>
@@ -263,6 +298,7 @@ function renderDetail(r) {
     <h2>${esc(a.headline)}</h2>
     <div class="bias ${esc(b.direction)}"><div><div class="meta">Outlook ${esc(r.target_label)}</div><div class="big">${esc(b.direction.toUpperCase())}</div><div class="meta">keyakinan ${esc(b.confidence)}</div></div><div>${esc(b.reason)}</div></div>
     ${r.prev_eval ? `<div class="meta">Outlook ${esc(r.prev_eval.session_name)} sebelumnya: ${esc(r.prev_eval.predicted)} → hasil ${esc(r.prev_eval.actual)} <b class="${r.prev_eval.hit ? "hit" : "miss"}">${r.prev_eval.hit ? "TEPAT" : "MELESET"}</b></div>` : ""}
+    ${planSection(r)}
     <h3>Ulasan sesi</h3><p>${esc(a.session_review)}</p>
     <div class="scroll"><table><tr><th>Sesi</th><th>Hasil</th><th>Open → Close</th><th>Δ</th><th>Range</th></tr>${sess}</table></div>
     <div class="meta" style="margin-top:6px">Hari ini H ${n2(p.day_high)} / L ${n2(p.day_low)} · kemarin H ${n2(p.prev_high)} / L ${n2(p.prev_low)} · minggu ini H ${n2(p.week_high)} / L ${n2(p.week_low)} · ADR20 ${n2(p.adr)}</div>
@@ -283,6 +319,13 @@ function renderDetail(r) {
     ${macro ? `<h3>Pasar terkait</h3><div class="scroll"><table><tr><th>Aset</th><th>Terakhir</th><th>1 hari</th><th>5 hari</th></tr>${macro}</table></div>` : ""}
     <details><summary>Semua berita yang dibaca (${r.news.length})</summary><ul class="f" style="font-size:13px">${allNews}</ul></details>
     <div class="foot">Konteks pasar, bukan sinyal entry. Model ${esc(r.usage?.model || "")}${r.source_errors?.length ? " · sumber gagal: " + esc(r.source_errors.join(", ")) : ""}</div>`;
+  $("#detail").querySelectorAll(".plan").forEach((c) => c.onclick = () => {
+    const p = r.trade.plans[+c.dataset.i];
+    drawPlan(p);
+    const w = TF_SEC[TF] * 80;
+    chart.timeScale().setVisibleRange({ from: r.t - w + OFF, to: r.t + w / 2 + OFF });
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  });
   $("#detail").querySelectorAll("tr[data-t]").forEach((tr) => tr.onclick = (ev) => {
     if (ev.target.tagName === "A") return;
     const t = +tr.dataset.t, w = TF_SEC[TF] * 60;
@@ -336,7 +379,23 @@ function renderAcc() {
   for (const m of INDEX) (by[m.slot_label] ||= []).push(m);
   const rows = INDEX.filter((m) => m.eval).reverse().map((m) => `<tr><td class="num">${fmtWib(m.t)}</td><td>${esc(m.slot_label)}</td><td>${badge(m.bias)}</td><td>${badge(m.eval.actual)}</td>
     <td class="num ${m.eval.change >= 0 ? "up" : "down"}">${m.eval.change >= 0 ? "+" : ""}${n2(m.eval.change)}</td><td class="${m.eval.hit ? "hit" : "miss"}">${m.eval.hit ? "✓" : "✗"}</td></tr>`).join("");
-  $("#accView").innerHTML = `<h2>Akurasi outlook</h2>
+  const pr = [];
+  for (const m of INDEX) (m.plans || []).forEach((p, i) => { const ev = m.plan_evals && m.plan_evals[i]; if (p.action !== "no_trade" && ev) pr.push({ m, p, ev }); });
+  const filled = pr.filter((x) => x.ev.result !== "not_filled");
+  const sumR = filled.reduce((a, x) => a + x.ev.r, 0);
+  const wins = filled.filter((x) => x.ev.r > 0).length;
+  const byStyle = (st) => { const f = filled.filter((x) => x.p.style === st); return f.length ? `${f.length} trade · ${Math.round(f.filter((x) => x.ev.r > 0).length / f.length * 100)}% win · ${f.reduce((a, x) => a + x.ev.r, 0).toFixed(1)}R` : "-"; };
+  const planRows = pr.slice().reverse().map(({ m, p, ev }) => `<tr><td class="num">${fmtWib(m.t)}</td><td>${esc(p.style)}</td><td class="${p.action === "buy" ? "up" : "down"}">${esc(p.action.toUpperCase())} ${esc(p.order)}</td>
+    <td class="num">${n2(p.entry)} / ${n2(p.sl)} / ${n2(p.tp1)}</td><td>${RES[ev.result] || esc(ev.result)}</td><td class="num">${ev.result === "not_filled" ? "-" : (ev.r >= 0 ? "+" : "") + ev.r + "R"}</td></tr>`).join("");
+  const planHtml = `<h2 style="margin-top:28px">Hasil rencana trading</h2>
+    <div class="meta">Dinilai otomatis dari candle M5: kena TP1 dulu = menang (R = jarak TP1), SL dulu = −1R, tidak terisi dalam masa berlaku = tidak dihitung. Tanpa spread/komisi.</div>
+    <div class="grid" style="margin:12px 0">
+      <div class="card"><div class="meta">Semua (terisi)</div><div style="font-size:22px;font-weight:700">${filled.length ? (sumR >= 0 ? "+" : "") + sumR.toFixed(1) + "R" : "-"}</div><div class="meta">${filled.length} trade · ${filled.length ? Math.round(wins / filled.length * 100) : 0}% win · ${pr.length - filled.length} tidak terisi</div></div>
+      <div class="card"><div class="meta">Intraday (M15)</div><div>${byStyle("intraday")}</div></div>
+      <div class="card"><div class="meta">Scalping (M5)</div><div>${byStyle("scalping")}</div></div>
+    </div>
+    ${planRows ? `<div class="scroll"><table><tr><th>Briefing</th><th>Gaya</th><th>Order</th><th>Entry / SL / TP1</th><th>Hasil</th><th>R</th></tr>${planRows}</table></div>` : '<div class="meta">Belum ada rencana yang selesai dinilai.</div>'}`;
+  $("#accView").innerHTML = planHtml + `<h2 style="margin-top:28px">Akurasi outlook</h2>
     <div class="meta">Outlook tiap briefing dicocokkan otomatis dengan label sesi target setelah sesinya selesai. Tebakan acak 3 pilihan ≈ 33%; jangan percaya angka sebelum ada ±50 sampel.</div>
     <div class="grid" style="margin:12px 0">${[["Semua", all], ...Object.entries(by).map(([k, v]) => [k, accStats(v)])].map(([k, s]) =>
       `<div class="card"><div class="meta">${esc(k)}</div><div class="big" style="font-size:22px;font-weight:700">${s.pct == null ? "-" : s.pct + "%"}</div><div class="meta">${s.hit}/${s.n} tepat</div></div>`).join("")}</div>

@@ -186,15 +186,20 @@ def fetch_calendar(errors: list[str]) -> list[dict]:
 
 def fetch_xau_15m(api_key: str, errors: list[str], outputsize: int = 5000) -> list[list[float]]:
     """Candle XAU/USD 15 menit dari Twelve Data → [[epoch, o, h, l, c], ...] lama→baru."""
+    return fetch_xau(api_key, errors, "15min", outputsize)
+
+
+def fetch_xau(api_key: str, errors: list[str], interval: str, outputsize: int) -> list[list[float]]:
+    """Candle XAU/USD (interval Twelve Data: 5min/15min/1h/4h) → [[epoch,o,h,l,c], ...]."""
     try:
         r = requests.get("https://api.twelvedata.com/time_series", params={
-            "symbol": "XAU/USD", "interval": "15min", "outputsize": outputsize,
+            "symbol": "XAU/USD", "interval": interval, "outputsize": outputsize,
             "timezone": "UTC", "apikey": api_key}, timeout=40)
         js = r.json()
         if js.get("status") != "ok":
             raise RuntimeError(js.get("message", "status not ok"))
     except Exception as e:  # noqa: BLE001
-        errors.append(f"twelvedata: {e}")
+        errors.append(f"twelvedata {interval}: {e}")
         return []
     out = []
     for v in js["values"]:

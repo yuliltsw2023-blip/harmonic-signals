@@ -17,7 +17,7 @@ import sys
 import time
 from datetime import datetime, timedelta, timezone
 
-from . import analyst, sources, telegram
+from . import analyst, charts, sources, telegram, trade
 from .sessions import (SESSION_NAMES, SLOT_BY_KEY, UTC, adr, classify, due_slots,
                        recent_sessions, session_window, slot_id)
 from .store import Store
@@ -82,6 +82,65 @@ def evaluate_pending(store: Store, metas: list[dict], c15: list[list[float]], no
     if updated:
         store.save_meta(metas)
     return updated
+
+
+def build_trade(ctx: dict, analysis: dict, c15: list, metas: list[dict], now: datetime,
+                errors: list[str]) -> tuple[dict, list[dict]]:
+    """Rencana trading + gambar chart. Juga menilai rencana lama (metas diubah di tempat)."""
+    key = os.environ["TWELVEDATA_API_KEY"]
+    m5 = sources.fetch_xau(key, errors, "5min", 3000)
+    h1 = sources.fetch_xau(key, errors, "1h", 500)
+    h4 = sources.fetch_xau(key, errors, "4h", 400)
+    if not (m5 and h1 and h4):
+        raise RuntimeError("candle M5/H1/H4 tidak lengkap")
+    ts = now.timestamp()
+
+    # nilai rencana lama
+    for m in metas:
+        for i, p in enumerate(m.get("plans") or []):
+            evals = m.setdefault("plan_evals", [None] * len(m["plans"]))
+            if evals[i] is None:
+                res = trade.evaluate(p, m["t"], m5, ts)
+                if res:
+                    evals[i] = res
+                    m["plan_evals_new"] = True
+
+    tfs = [trade.tf_summary(n, b) for n, b in (("H4", h4), ("H1", h1), ("M15", c15), ("M5", m5))]
+    pc = ctx["price"]
+    asia = next((s for s in reversed(ctx["sessions"]) if s["session"] == "asia"), None)
+    levels = {"High hari ini": pc["day_high"], "Low hari ini": pc["day_low"],
+              "High kemarin": pc["prev_high"], "Low kemarin": pc["prev_low"],
+              "Close kemarin": pc["prev_close"], "High minggu": pc["week_high"], "Low minggu": pc["week_low"]}
+    if asia:
+        levels.update({"High Asia": asia["high"], "Low Asia": asia["low"]})
+    price = m5[-1][4]
+    pctx = {"now": int(ts), "target_label": ctx["target_label"], "price": price, "levels": levels, "tfs": tfs,
+            "briefing": {"bias": analysis["bias"]["direction"], "confidence": analysis["bias"]["confidence"],
+                         "headline": analysis["headline"], "event_risks": analysis["event_risks"]}}
+    data, usage = trade.plan(pctx)
+    atr_of = {s["tf"]: s["atr"] for s in tfs}
+    plans = []
+    for p in data["plans"][:2]:
+        tf = "M15" if p["style"] == "intraday" else "M5"
+        plans.append(trade.validate(p, price, atr_of[tf], atr_of["H1"]))
+    block = {"t": int(ts), "price": price, "trend": data["trend"], "plans": plans, "usage": usage,
+             "atr": atr_of}
+
+    prev = next((m for m in reversed(metas) if m.get("plan_evals") and any(m["plan_evals"])), None)
+    images = []
+    out_dir = os.path.dirname(os.environ.get("GOLDNEWS_OUTBOX") or os.path.join(
+        os.environ.get("TEMP", "/tmp"), "x")) or "."
+    for i, p in enumerate(plans):
+        bars = c15 if p["tf"] == "M15" else m5
+        png, src = charts.render(p, bars, int(ts), errors)
+        p["chart"] = src
+        path = os.path.join(out_dir, f"plan_{i}.png")
+        with open(path, "wb") as f:
+            f.write(png)
+        images.append({"type": "photo", "path": path,
+                       "caption": telegram.format_plan(p, data["trend"] if i == 0 else None,
+                                                       prev if i == 0 else None)})
+    return block, images
 
 
 def main() -> int:
@@ -156,13 +215,26 @@ def main() -> int:
                 item.update(impact=k["impact"], effect=k["effect"], why=k["why"])
                 key_news.append(item)
 
+        # ---- rencana trading (intraday M15 + scalping M5), kecuali rekap mingguan
+        trade_block, images = None, []
+        if slot.key != "weekly":
+            try:
+                trade_block, images = build_trade(ctx, analysis, c15, metas, now, errors)
+            except Exception as e:  # noqa: BLE001 — briefing tetap dikirim tanpa rencana
+                log.exception("Rencana trading gagal")
+                errors.append(f"trade: {str(e)[:120]}")
+        if any(m.get("plan_evals_new") for m in metas):
+            for m in metas:
+                m.pop("plan_evals_new", None)
+            store.save_meta(metas)
+
         site = os.environ.get("GOLDNEWS_SITE_URL", "").rstrip("/")
         report = {
             "id": rid, "slot": slot.key, "slot_label": slot.label, "t": int(now.timestamp()),
             "target": target, "target_day": target_day, "target_label": target_label,
             "price": price, "sessions": sessions, "macro": macro, "calendar": cal,
             "news": news, "key_news": key_news, "analysis": analysis, "prev_eval": prev_eval,
-            "usage": usage, "source_errors": errors,
+            "usage": usage, "source_errors": errors, "trade": trade_block,
         }
         meta = {
             "id": rid, "t": report["t"], "slot": slot.key, "slot_label": slot.label,
@@ -171,23 +243,29 @@ def main() -> int:
             "price": price["last"],
             "markers": [{"t": n["t"], "title": n["title"][:140], "effect": n["effect"],
                          "impact": n["impact"]} for n in key_news if n["impact"] != "rendah"],
+            "plans": [{k: p.get(k) for k in ("style", "tf", "action", "order", "entry", "sl", "tp1", "tp2",
+                                             "valid_hours", "risk")}
+                      for p in (trade_block or {}).get("plans", [])],
         }
         text = telegram.format_briefing(report, f"{site}/#r={rid}" if site else "")
         store.save_report(report, meta)
         store.save_calendar(cal_week)
+        messages = [{"type": "text", "text": text}] + images
+        outbox = os.environ.get("GOLDNEWS_OUTBOX", "")
         if dry:
             # Report tetap disimpan (untuk cek website), tapi tidak dikirim & slot
             # tidak ditandai terkirim.
             sys.stdout.buffer.write((text + "\n").encode("utf-8"))
+            for m in images:
+                sys.stdout.buffer.write(f"\n[FOTO {m['path']}]\n{m['caption']}\n".encode("utf-8"))
             log.info("DRY_RUN usage=%s errors=%s", json.dumps(usage), errors)
             return 0
-        outbox = os.environ.get("GOLDNEWS_OUTBOX")
         if outbox:
             # GitHub Actions: kirim setelah website ter-deploy (lihat send_outbox.py)
             with open(outbox, "w", encoding="utf-8") as f:
-                f.write(text)
+                json.dump(messages, f, ensure_ascii=False)
         else:
-            telegram.send(text)
+            telegram.send_all(messages)
         store.mark_sent(rid, now.timestamp())
         log.info("Terkirim. sumber gagal: %s", errors)
         return 0

@@ -65,3 +65,47 @@ def test_format_briefing_short():
     }
     txt = format_briefing(rep, "https://x/#r=1")
     assert "&lt;rises&gt;" in txt and "BEARISH" in txt and len(txt) < 4000
+
+
+# ---------------------------------------------------------------- rencana trading
+from goldnews.trade import evaluate, validate  # noqa: E402
+
+
+def _plan(**kw):
+    p = {"style": "intraday", "action": "sell", "order": "limit", "entry": 3775.0, "sl": 3792.0,
+         "tp1": 3757.0, "tp2": 3742.0, "valid_hours": 2, "invalidation": "x", "reason": "y"}
+    p.update(kw)
+    return p
+
+
+def test_validate_ok_and_rr():
+    p = validate(_plan(), price=3765.0, atr_entry=10.0, atr_h1=20.0)
+    assert p["action"] == "sell" and p["tf"] == "M15" and p["rr1"] > 1
+
+
+def test_validate_rejects_wrong_side():
+    p = validate(_plan(sl=3760.0), price=3765.0, atr_entry=10.0, atr_h1=20.0)
+    assert p["action"] == "no_trade" and "SELL" in p["rejected"]
+
+
+def test_validate_fixes_order_type():
+    # SELL di bawah harga = stop, bukan limit
+    p = validate(_plan(entry=3760.0, sl=3775.0, tp1=3745.0, tp2=3730.0), price=3765.0, atr_entry=10.0, atr_h1=20.0)
+    assert p["order"] == "stop"
+
+
+def test_evaluate_sell_tp1_and_sl_first():
+    p = validate(_plan(), price=3765.0, atr_entry=10.0, atr_h1=20.0)
+    t0 = 1_000_000
+    bars = [[t0 + 300, 3765, 3776, 3764, 3770],      # terisi di 3775
+            [t0 + 600, 3770, 3771, 3756, 3758]]      # kena TP1
+    assert evaluate(p, t0, bars, t0 + 900)["result"] == "tp1"
+    bars2 = [[t0 + 300, 3765, 3776, 3764, 3770], [t0 + 600, 3770, 3793, 3756, 3760]]
+    assert evaluate(p, t0, bars2, t0 + 900)["result"] == "sl"   # SL & TP satu bar → SL
+
+
+def test_evaluate_not_filled():
+    p = validate(_plan(), price=3765.0, atr_entry=10.0, atr_h1=20.0)
+    t0 = 1_000_000
+    bars = [[t0 + i * 300, 3765, 3770, 3760, 3765] for i in range(1, 40)]
+    assert evaluate(p, t0, bars, t0 + 40 * 300)["result"] == "not_filled"

@@ -70,6 +70,66 @@ def format_briefing(report: dict, link: str = "") -> str:
     return text
 
 
+RESULT = {"tp2": "✅ TP2", "tp1": "✅ TP1", "sl": "❌ SL", "expired": "⌛ ditutup (kedaluwarsa)",
+          "not_filled": "⏹ tidak terisi"}
+
+
+def format_plan(p: dict, trend: dict | None = None, prev_meta: dict | None = None) -> str:
+    """Caption foto rencana trading (maks 1024 karakter)."""
+    e = html.escape
+    name = "INTRADAY" if p["style"] == "intraday" else "SCALPING"
+    out = []
+    if trend:
+        out.append("🧭 <b>Tren</b> H4 {} · H1 {} · M15 {} · M5 {}".format(
+            *(BIAS_ICON[trend[k]] for k in ("h4", "h1", "m15", "m5"))))
+        out.append(f"<i>{e(trend['summary'][:220])}</i>")
+        if prev_meta:
+            res = []
+            for pp, ev in zip(prev_meta["plans"], prev_meta["plan_evals"]):
+                if not ev:
+                    continue
+                r = "" if ev["result"] == "not_filled" else f" ({ev['r']:+.1f}R)"
+                res.append(f"{pp['style']} {pp['action'].upper()} → {RESULT.get(ev['result'], ev['result'])}{r}")
+            if res:
+                out.append("🧾 Rencana sebelumnya: " + "; ".join(res))
+        out.append("")
+    if p["action"] == "no_trade":
+        out.append(f"⏸ <b>{name} ({p['tf']}) · TIDAK ADA SETUP</b>")
+        out.append(e(p["reason"][:300]))
+        if p.get("rejected"):
+            out.append(f"<i>(usulan {p.get('action_proposed', '').upper()} ditolak: {e(p['rejected'])})</i>")
+    else:
+        icon = "🟢" if p["action"] == "buy" else "🔴"
+        out.append(f"{icon} <b>{name} ({p['tf']}) · {p['action'].upper()} {p['order'].upper()}</b>")
+        out.append(f"Entry <b>{p['entry']:,.2f}</b> · SL <b>{p['sl']:,.2f}</b> (risiko {p['risk']:.2f})")
+        out.append(f"TP1 <b>{p['tp1']:,.2f}</b> ({p['rr1']:.1f}R) · TP2 <b>{p['tp2']:,.2f}</b> ({p['rr2']:.1f}R)")
+        out.append(f"Berlaku ± {p['valid_hours']:g} jam")
+        out.append(e(p["reason"][:260]))
+        out.append(f"❗ Batal jika: {e(p['invalidation'][:160])}")
+    out.append(f"<i>📷 {'TradingView' if p.get('chart') == 'tradingview' else 'chart cadangan'} · bukan sinyal pasti</i>")
+    text = "\n".join(out)
+    return text if len(text) <= 1024 else text[:1020] + "…"
+
+
+def send_photo(path: str, caption: str) -> None:
+    token = os.environ["TELEGRAM_BOT_TOKEN"]
+    chat = os.environ["GOLDNEWS_CHAT_ID"]
+    with open(path, "rb") as f:
+        r = requests.post(f"https://api.telegram.org/bot{token}/sendPhoto",
+                          data={"chat_id": chat, "caption": caption, "parse_mode": "HTML"},
+                          files={"photo": ("chart.png", f, "image/png")}, timeout=60)
+    if not r.ok:
+        raise RuntimeError(f"Telegram foto {r.status_code}: {r.text[:200]} | {_diagnose(token, chat)}")
+
+
+def send_all(messages: list[dict]) -> None:
+    for m in messages:
+        if m["type"] == "text":
+            send(m["text"])
+        elif m["type"] == "photo":
+            send_photo(m["path"], m["caption"])
+
+
 def send(text: str) -> None:
     token = os.environ["TELEGRAM_BOT_TOKEN"]
     chat = os.environ["GOLDNEWS_CHAT_ID"]
