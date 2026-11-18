@@ -14,7 +14,7 @@ import anthropic
 
 from .sessions import WIB
 
-MODEL = os.environ.get("GOLDNEWS_MODEL") or "claude-opus-5-5"
+MODEL = os.environ.get("GOLDNEWS_MODEL") or "claude-sonnet-5-5"
 EFFORT = os.environ.get("GOLDNEWS_EFFORT") or "medium"
 
 EFFECT = {"type": "string", "enum": ["bullish", "bearish", "netral"]}

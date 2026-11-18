@@ -41,7 +41,7 @@ jobs:
       GOLDNEWS_CHAT_ID: ${{ secrets.GOLDNEWS_CHAT_ID }}
       # Screenshot TradingView asli (chart-img.com). Kosong/invalid → chart cadangan.
       CHART_IMG_API_KEY: ${{ secrets.CHART_IMG_API_KEY }}
-      GOLDNEWS_MODEL: ${{ vars.GOLDNEWS_MODEL || 'claude-opus-5-5' }}
+      GOLDNEWS_MODEL: ${{ vars.GOLDNEWS_MODEL || 'claude-sonnet-5-5' }}
       GOLDNEWS_SITE_URL: ${{ vars.GOLDNEWS_SITE_URL || 'https://gold-briefing-beta.vercel.app' }}
       GOLDNEWS_SLOT: ${{ github.event.inputs.slot }}
       GOLDNEWS_FORCE: ${{ github.event.inputs.force }}

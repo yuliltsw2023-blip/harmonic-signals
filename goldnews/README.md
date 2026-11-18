@@ -22,15 +22,17 @@ Reaksi data AS otomatis maju 1 jam (dihitung `zoneinfo`).
    ini, pasar terkait (Yahoo: DXY, US10Y, WTI, S&P 500, perak, VIX).
 3. Hitung hasil sesi Asia/London/NY → Bullish/Bearish/Sideways (perubahan ≥ 20% ADR dan
    close di 40% teratas/terbawah range; selain itu Sideways).
-4. Claude (`GOLDNEWS_MODEL`, default `claude-opus-5-5`) menulis analisa makro & mikro,
+4. Claude (`GOLDNEWS_MODEL`, default `claude-sonnet-5-5`) menulis analisa makro & mikro,
    memilih berita kunci beserta arah dampaknya, event berisiko, level & skenario, dan bias
    sesi target. Output JSON terstruktur.
 5. Outlook lama yang sesinya sudah selesai dinilai otomatis (tepat/meleset) → tab Akurasi.
 6. Data disimpan ke `goldnews/site/data/` (di-commit) → website di-deploy → pesan Telegram.
 
 ## Biaya per bulan (perkiraan)
-- Claude Opus 5.5: ±15 rb token masuk + ±3–4 rb keluar per briefing ≈ $0.13 → ±92 briefing
-  ≈ **$12/bulan**. Ganti ke Sonnet 5.5 (Variable `GOLDNEWS_MODEL=claude-sonnet-5-5`) ≈ $6.
+- Claude Sonnet 5.5 (default sejak 18 Nov 2026, demi hemat): analisa berita + rencana trading
+  ≈ $0,10 per briefing → ±92 briefing ≈ **$9/bulan**, dipotong dari saldo API console.anthropic.com
+  (bukan kuota langganan Claude). Opus 5.5 lebih tajam tapi ±2× lipat: Variable
+  `GOLDNEWS_MODEL=claude-opus-5-5`.
 - GitHub Actions ±21 run kecil/hari kerja ≈ 500–650 menit (kuota repo private 2.000).
 - Twelve Data, RSS, ForexFactory, Yahoo, Vercel Hobby: gratis.
 
