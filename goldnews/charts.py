@@ -26,12 +26,14 @@ def chart_img(plan: dict, now: int, api_key: str | None = None) -> bytes:
         raise RuntimeError("CHART_IMG_API_KEY kosong")
     tf, sec = plan["tf"], TF_SEC[plan["tf"]]
     start = now - BARS_BACK[tf] * sec
-    end = now + 30 * sec
+    end = now + 6 * sec  # chart-img tidak menggambar apa pun di kanan candle terakhir
     drawings = []
     if plan["action"] in ("buy", "sell"):
         drawings.append({
             "name": "Long Position" if plan["action"] == "buy" else "Short Position",
-            "input": {"startDatetime": _iso(now), "endDatetime": _iso(now + plan["valid_hours"] * 3600),
+            # mulai beberapa candle sebelum candle terakhir — kotak di area 'masa depan' tidak digambar
+            "input": {"startDatetime": _iso(now - 18 * sec),
+                      "endDatetime": _iso(now + max(plan["valid_hours"] * 3600, 12 * sec)),
                       "entryPrice": plan["entry"], "targetPrice": plan["tp2"], "stopPrice": plan["sl"]},
         })
         drawings.append({"name": "Horizontal Line", "input": {"price": plan["tp1"]},
@@ -41,8 +43,9 @@ def chart_img(plan: dict, now: int, api_key: str | None = None) -> bytes:
         "symbol": "OANDA:XAUUSD", "interval": INTERVAL[tf], "theme": "dark", "style": "candle",
         "width": 800, "height": 600, "timezone": "Asia/Jakarta",
         "range": {"from": _iso(start), "to": _iso(end)},
-        "studies": [{"name": "Moving Average Exponential", "input": {"length": 20}},
-                    {"name": "Moving Average Exponential", "input": {"length": 50}}],
+        # chart-img gratis: maks 3 elemen (studies + drawings) per gambar
+        "studies": [{"name": "Moving Average Exponential", "input": {"length": 20}}]
+        + ([{"name": "Moving Average Exponential", "input": {"length": 50}}] if not drawings else []),
         "drawings": drawings,
     }
     r = requests.post(CHART_IMG_URL, json=body, timeout=60,
