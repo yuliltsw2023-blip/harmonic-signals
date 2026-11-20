@@ -74,6 +74,19 @@ RESULT = {"tp2": "✅ TP2", "tp1": "✅ TP1", "sl": "❌ SL", "expired": "⌛ di
           "not_filled": "⏹ tidak terisi"}
 
 
+def format_sessions(sessions: list[dict], src: str) -> str:
+    """Caption foto kotak sesi (3 sesi terakhir)."""
+    out = ["📊 <b>Hasil sesi XAU/USD</b> (kotak = high–low sesi)"]
+    for s in sessions[-3:]:
+        run = " (berjalan)" if not s["complete"] else ""
+        out.append(f"{BIAS_ICON[s['label']]} <b>{s['name']}</b>{run} {s['hours_wib']}: <b>{s['label'].upper()}</b> "
+                   f"{s['change']:+.1f} · O {s['open']:,.1f} → C {s['close']:,.1f} · "
+                   f"range {s['range']:.1f} ({s['range_vs_adr']:.0%} ADR)")
+    out.append("<i>Hijau = Bullish · Merah = Bearish · Abu = Sideways · "
+               f"📷 {'TradingView' if src == 'tradingview' else 'chart cadangan'}</i>")
+    return "\n".join(out)[:1024]
+
+
 def format_plan(p: dict, trend: dict | None = None, prev_meta: dict | None = None) -> str:
     """Caption foto rencana trading (maks 1024 karakter)."""
     e = html.escape

@@ -250,7 +250,19 @@ def main() -> int:
         text = telegram.format_briefing(report, f"{site}/#r={rid}" if site else "")
         store.save_report(report, meta)
         store.save_calendar(cal_week)
-        messages = [{"type": "text", "text": text}] + images
+        # foto kotak sesi (3 sesi terakhir) — sebelum foto rencana trading
+        session_img = []
+        try:
+            png, src = charts.render_sessions(sessions, c15, int(now.timestamp()), errors)
+            spath = os.path.join(os.path.dirname(os.environ.get("GOLDNEWS_OUTBOX") or os.path.join(
+                os.environ.get("TEMP", "/tmp"), "x")) or ".", "sessions.png")
+            with open(spath, "wb") as f:
+                f.write(png)
+            session_img = [{"type": "photo", "path": spath, "caption": telegram.format_sessions(sessions, src)}]
+        except Exception as e:  # noqa: BLE001
+            log.exception("Chart sesi gagal")
+            errors.append(f"chart sesi: {str(e)[:100]}")
+        messages = [{"type": "text", "text": text}] + session_img + images
         outbox = os.environ.get("GOLDNEWS_OUTBOX", "")
         if dry:
             # Report tetap disimpan (untuk cek website), tapi tidak dikirim & slot

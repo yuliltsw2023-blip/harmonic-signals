@@ -117,6 +117,93 @@ def local_chart(plan: dict, bars: list[list[float]], now: int) -> bytes:
     return buf.getvalue()
 
 
+SESSION_COLORS = {"bullish": ("rgba(38,166,154,0.2)", "rgb(38,166,154)", "#26a69a"),
+                  "bearish": ("rgba(239,83,80,0.2)", "rgb(239,83,80)", "#ef5350"),
+                  "sideways": ("rgba(158,158,158,0.2)", "rgb(158,158,158)", "#9e9e9e")}
+
+
+def sessions_chart_img(sessions: list[dict], now: int, api_key: str | None = None) -> bytes:
+    """Chart TradingView M15 + kotak high–low 3 sesi terakhir (batas gratis = 3 elemen).
+    Catatan: chart-img tidak menampilkan teks di dalam kotak → label di caption."""
+    key = (api_key or os.environ.get("CHART_IMG_API_KEY", "")).strip()
+    if not key:
+        raise RuntimeError("CHART_IMG_API_KEY kosong")
+    ss = sessions[-3:]
+    drawings = []
+    for s in ss:
+        bg, ln, _ = SESSION_COLORS[s["label"]]
+        end = s["end"] if s["complete"] else now + 900
+        drawings.append({"name": "Rectangle",
+                         "input": {"startDatetime": _iso(s["start"]), "endDatetime": _iso(end),
+                                   "startPrice": s["high"], "endPrice": s["low"]},
+                         "override": {"backgroundColor": bg, "lineColor": ln, "lineWidth": 1}})
+    body = {"symbol": "OANDA:XAUUSD", "interval": "15m", "theme": "dark", "style": "candle",
+            "width": 800, "height": 600, "timezone": "Asia/Jakarta",
+            "range": {"from": _iso(ss[0]["start"] - 4 * 3600), "to": _iso(now + 3 * 900)},
+            "drawings": drawings}
+    r = requests.post(CHART_IMG_URL, json=body, timeout=60,
+                      headers={"x-api-key": key, "content-type": "application/json"})
+    if r.status_code != 200 or not r.headers.get("content-type", "").startswith("image/"):
+        raise RuntimeError(f"chart-img {r.status_code}: {r.text[:200]}")
+    return r.content
+
+
+def sessions_local(sessions: list[dict], bars: list[list[float]], now: int) -> bytes:
+    """Cadangan: candle M15 sendiri + kotak & label sesi."""
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    from matplotlib.patches import Rectangle
+
+    ss = sessions[-3:]
+    t0 = ss[0]["start"] - 4 * 3600
+    bars = [b for b in bars if b[0] >= t0]
+    idx = {b[0]: i for i, b in enumerate(bars)}
+    fig, ax = plt.subplots(figsize=(8, 6), dpi=100)
+    fig.patch.set_facecolor("#131722")
+    ax.set_facecolor("#131722")
+    for i, (t, o, h, l, c) in enumerate(bars):
+        col = "#26a69a" if c >= o else "#ef5350"
+        ax.plot([i, i], [l, h], color=col, lw=0.8)
+        ax.add_patch(Rectangle((i - 0.3, min(o, c)), 0.6, max(abs(c - o), 0.01), color=col))
+    for s in ss:
+        i0 = next((idx[t] for t in sorted(idx) if t >= s["start"]), None)
+        i1 = max((idx[t] for t in idx if t < s["end"]), default=None)
+        if i0 is None or i1 is None:
+            continue
+        _, _, hexc = SESSION_COLORS[s["label"]]
+        ax.add_patch(Rectangle((i0 - 0.5, s["low"]), i1 - i0 + 1, s["high"] - s["low"],
+                               facecolor=hexc, alpha=0.15, edgecolor=hexc))
+        ax.text(i0, s["high"], f" {s['name']} {s['label'].upper()} {s['change']:+.1f}", color=hexc,
+                fontsize=9, va="bottom", fontweight="bold")
+    step = max(1, len(bars) // 6)
+    ticks = list(range(0, len(bars), step))
+    ax.set_xticks(ticks)
+    ax.set_xticklabels([datetime.fromtimestamp(bars[i][0], UTC).astimezone(
+        timezone(timedelta(hours=7))).strftime("%d/%m %H:%M") for i in ticks], fontsize=8)
+    ax.tick_params(colors="#9aa0a6")
+    ax.yaxis.tick_right()
+    for sp in ax.spines.values():
+        sp.set_color("#2a2e39")
+    ax.grid(color="#1f2330", lw=0.6)
+    ax.set_title("XAU/USD M15 · sesi Asia / London / New York", color="#e8e6e3", fontsize=12, loc="left")
+    fig.text(0.01, 0.01, "chart cadangan (bukan TradingView)", color="#5f6368", fontsize=7)
+    buf = io.BytesIO()
+    fig.tight_layout()
+    fig.savefig(buf, format="png", facecolor=fig.get_facecolor())
+    plt.close(fig)
+    return buf.getvalue()
+
+
+def render_sessions(sessions: list[dict], bars: list[list[float]], now: int,
+                    errors: list[str]) -> tuple[bytes, str]:
+    try:
+        return sessions_chart_img(sessions, now), "tradingview"
+    except Exception as e:  # noqa: BLE001
+        errors.append(f"chart-img sesi: {str(e)[:80]}")
+    return sessions_local(sessions, bars, now), "cadangan"
+
+
 def render(plan: dict, bars: list[list[float]], now: int, errors: list[str]) -> tuple[bytes, str]:
     """→ (png, sumber) — 'tradingview' atau 'cadangan'."""
     try:
