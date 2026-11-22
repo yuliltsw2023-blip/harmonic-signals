@@ -87,6 +87,11 @@ def format_sessions(sessions: list[dict], src: str) -> str:
     return "\n".join(out)[:1024]
 
 
+def _cut(text: str, n: int) -> str:
+    text = (text or "").strip()
+    return text if len(text) <= n else text[:n].rsplit(" ", 1)[0].rstrip(",.;:") + "…"
+
+
 def format_plan(p: dict, trend: dict | None = None, prev_meta: dict | None = None) -> str:
     """Caption foto rencana trading (maks 1024 karakter)."""
     e = html.escape
@@ -106,22 +111,43 @@ def format_plan(p: dict, trend: dict | None = None, prev_meta: dict | None = Non
             if res:
                 out.append("🧾 Rencana sebelumnya: " + "; ".join(res))
         out.append("")
-    if p["action"] == "no_trade":
+    act = p["action"]
+    if act == "no_trade":
         out.append(f"⏸ <b>{name} ({p['tf']}) · TIDAK ADA SETUP</b>")
         out.append(e(p["reason"][:300]))
         if p.get("rejected"):
-            out.append(f"<i>(usulan {p.get('action_proposed', '').upper()} ditolak: {e(p['rejected'])})</i>")
+            out.append(f"<i>(usulan ditolak: {e(p['rejected'])})</i>")
     else:
-        icon = "🟢" if p["action"] == "buy" else "🔴"
-        out.append(f"{icon} <b>{name} ({p['tf']}) · {p['action'].upper()} {p['order'].upper()}</b>")
-        out.append(f"Entry <b>{p['entry']:,.2f}</b> · SL <b>{p['sl']:,.2f}</b> (risiko {p['risk']:.2f})")
-        out.append(f"TP1 <b>{p['tp1']:,.2f}</b> ({p['rr1']:.1f}R) · TP2 <b>{p['tp2']:,.2f}</b> ({p['rr2']:.1f}R)")
-        out.append(f"Berlaku ± {p['valid_hours']:g} jam")
-        out.append(e(p["reason"][:260]))
-        out.append(f"❗ Batal jika: {e(p['invalidation'][:160])}")
+        waiting = act.startswith("wait_")
+        side = "BUY" if act.endswith("buy") else "SELL"
+        icon = "🟢" if side == "BUY" else "🔴"
+        head = f"⏳ <b>{name} ({p['tf']}) · TUNGGU {side}</b> — belum entry" if waiting else             f"{icon} <b>{name} ({p['tf']}) · {side} {p['order'].upper()}</b> — 4 langkah lengkap"
+        out.append(head)
+        ck = p.get("check") or {}
+        mark = lambda k: "✅" if ck.get(k) else "⏳"
+        st = p.get("steps") or {}
+        out.append(f"{mark('liquidity')} Liquidity: {e(_cut(st.get('liquidity', ''), 110))}")
+        out.append(f"{mark('structure')} Structure: {e(_cut(st.get('structure', ''), 110))}")
+        out.append(f"{mark('poi')} POI {e(p.get('poi_label', '')[:30])} {p.get('poi_lo', 0):,.1f}–{p.get('poi_hi', 0):,.1f}: "
+                   f"{e(_cut(st.get('poi', ''), 90))}")
+        out.append(f"{mark('confirmation')} Entry: {e(_cut(st.get('entry', ''), 110))}")
+        lv = (f"Entry {p['entry']:,.2f} · SL {p['sl']:,.2f} · TP1 {p['tp1']:,.2f}"
+              + (f" ({p['rr1']:.1f}R)" if p.get("rr1") else "") + f" · TP2 {p['tp2']:,.2f}"
+              + (f" ({p['rr2']:.1f}R)" if p.get("rr2") else ""))
+        out.append(("<i>Kalau terkonfirmasi:</i> " + lv) if waiting else f"<b>{lv}</b>")
+        if waiting and p.get("trigger"):
+            out.append(f"🔔 Tunggu: {e(_cut(p['trigger'], 180))}")
+        if p.get("gated"):
+            out.append(f"<i>({e(p['gated'][:120])})</i>")
+        out.append(f"❗ Batal jika: {e(_cut(p['invalidation'], 120))}")
     out.append(f"<i>📷 {'TradingView' if p.get('chart') == 'tradingview' else 'chart cadangan'} · bukan sinyal pasti</i>")
     text = "\n".join(out)
-    return text if len(text) <= 1024 else text[:1020] + "…"
+    if len(text) > 1024 and trend:          # buang ringkasan tren dulu
+        out.pop(1)
+        text = "\n".join(out)
+    if len(text) > 1024:                     # potong per baris (tiap baris tag-nya tertutup)
+        text = text[:1010].rsplit("\n", 1)[0] + "\n…"
+    return text
 
 
 def send_photo(path: str, caption: str) -> None:

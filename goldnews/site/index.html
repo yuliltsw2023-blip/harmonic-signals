@@ -257,23 +257,36 @@ function planSection(r) {
     const evs = ev ? `<div style="margin-top:6px"><b>Hasil:</b> ${RES[ev.result] || esc(ev.result)}${ev.result === "not_filled" ? "" : ` (${ev.r >= 0 ? "+" : ""}${ev.r}R)`}</div>` : '<div class="meta" style="margin-top:6px">Hasil: belum selesai</div>';
     if (p.action === "no_trade") return `<div class="card"><div class="meta">${esc(p.style)} · ${esc(p.tf)}</div><div class="big" style="font-size:18px;font-weight:700">Tidak ada setup</div>
       <div>${esc(p.reason)}</div>${p.rejected ? `<div class="meta">usulan ${esc((p.action_proposed || "").toUpperCase())} ditolak: ${esc(p.rejected)}</div>` : ""}</div>`;
+    const wait = p.action.startsWith("wait_");
+    const side = p.action.endsWith("buy") ? "BUY" : "SELL";
+    const ck = p.check || {}, st = p.steps || {};
+    const mk = (k) => ck[k] ? "✅" : "⏳";
+    const steps = p.steps ? `<div style="margin:6px 0;font-size:13.5px">
+        <div>${mk("liquidity")} <b>Liquidity</b> — ${esc(st.liquidity)}</div>
+        <div>${mk("structure")} <b>Structure</b> — ${esc(st.structure)}</div>
+        <div>${mk("poi")} <b>POI</b> ${esc(p.poi_label || "")} ${n2(p.poi_lo)}–${n2(p.poi_hi)} — ${esc(st.poi)}</div>
+        <div>${mk("confirmation")} <b>Entry</b> — ${esc(st.entry)}</div></div>` : "";
     return `<div class="card plan" data-i="${i}" style="cursor:pointer"><div class="meta">${esc(p.style)} · ${esc(p.tf)} · klik untuk gambar di chart</div>
-      <div style="font-size:18px;font-weight:700" class="${p.action === "buy" ? "up" : "down"}">${esc(p.action.toUpperCase())} ${esc(p.order.toUpperCase())}</div>
-      <div class="lv"><span>Entry <b>${n2(p.entry)}</b></span><span>SL <b class="down">${n2(p.sl)}</b></span>
-      <span>TP1 <b class="up">${n2(p.tp1)}</b> <span class="meta">${p.rr1}R</span></span><span>TP2 <b class="up">${n2(p.tp2)}</b> <span class="meta">${p.rr2}R</span></span></div>
-      <div class="meta">berlaku ± ${p.valid_hours} jam · risiko ${n2(p.risk)}</div>
-      <div>${esc(p.reason)}</div><div class="meta">Batal jika: ${esc(p.invalidation)}</div>${evs}</div>`;
+      <div style="font-size:18px;font-weight:700" class="${side === "BUY" ? "up" : "down"}">${wait ? "⏳ TUNGGU " + side : side + " " + esc(p.order.toUpperCase())}</div>
+      ${steps}
+      <div class="lv">${wait ? '<span class="meta">Kalau terkonfirmasi:</span>' : ""}<span>Entry <b>${n2(p.entry)}</b></span><span>SL <b class="down">${n2(p.sl)}</b></span>
+      <span>TP1 <b class="up">${n2(p.tp1)}</b> <span class="meta">${p.rr1 || "-"}R</span></span><span>TP2 <b class="up">${n2(p.tp2)}</b> <span class="meta">${p.rr2 || "-"}R</span></span></div>
+      ${wait && p.trigger ? `<div>🔔 <b>Tunggu:</b> ${esc(p.trigger)}</div>` : ""}
+      ${p.gated ? `<div class="meta">${esc(p.gated)}</div>` : ""}
+      <div class="meta">berlaku ± ${p.valid_hours} jam${p.risk ? " · risiko " + n2(p.risk) : ""}${p.target_liquidity ? " · target liquidity " + n2(p.target_liquidity) : ""}</div>
+      <div>${esc(p.reason)}</div><div class="meta">Batal jika: ${esc(p.invalidation)}</div>${wait ? "" : evs}</div>`;
   }).join("");
   const d = (x) => badge(x);
   return `<h3>Rencana trading</h3>
     <div class="meta">Tren: H4 ${d(t.h4)} H1 ${d(t.h1)} M15 ${d(t.m15)} M5 ${d(t.m5)}</div><p>${esc(t.summary)}</p>
     <div class="grid">${cards}</div>
-    <div class="foot">Rencana dibuat dari candle asli + aturan, dinilai otomatis dari candle M5 (SL dihitung lebih dulu kalau kena di candle yang sama). Bukan sinyal pasti.</div>`;
+    <div class="foot">Alur Liquidity → Structure → POI → Entry (H1 → M15 → M5). ✅ = terpenuhi secara mekanis dari candle, ⏳ = belum. Hanya BUY/SELL (4 langkah lengkap) yang dinilai otomatis dari candle M5 (SL dihitung lebih dulu kalau kena di candle yang sama). Bukan sinyal pasti.</div>`;
 }
 function drawPlan(p) {
   priceLines.forEach((l) => series.removePriceLine(l)); priceLines = [];
   const add = (price, color, title, style = 2) => priceLines.push(series.createPriceLine({ price, color, lineWidth: 1, lineStyle: style, title }));
   add(p.entry, css("--gold"), "Entry", 0); add(p.sl, css("--bear"), "SL"); add(p.tp1, css("--bull"), "TP1"); add(p.tp2, css("--bull"), "TP2");
+  if (p.poi_lo && p.poi_hi) { add(p.poi_hi, css("--muted"), "POI", 1); add(p.poi_lo, css("--muted"), "POI", 1); }
 }
 
 function renderDetail(r) {
@@ -380,7 +393,7 @@ function renderAcc() {
   const rows = INDEX.filter((m) => m.eval).reverse().map((m) => `<tr><td class="num">${fmtWib(m.t)}</td><td>${esc(m.slot_label)}</td><td>${badge(m.bias)}</td><td>${badge(m.eval.actual)}</td>
     <td class="num ${m.eval.change >= 0 ? "up" : "down"}">${m.eval.change >= 0 ? "+" : ""}${n2(m.eval.change)}</td><td class="${m.eval.hit ? "hit" : "miss"}">${m.eval.hit ? "✓" : "✗"}</td></tr>`).join("");
   const pr = [];
-  for (const m of INDEX) (m.plans || []).forEach((p, i) => { const ev = m.plan_evals && m.plan_evals[i]; if (p.action !== "no_trade" && ev) pr.push({ m, p, ev }); });
+  for (const m of INDEX) (m.plans || []).forEach((p, i) => { const ev = m.plan_evals && m.plan_evals[i]; if ((p.action === "buy" || p.action === "sell") && ev) pr.push({ m, p, ev }); });
   const filled = pr.filter((x) => x.ev.result !== "not_filled");
   const sumR = filled.reduce((a, x) => a + x.ev.r, 0);
   const wins = filled.filter((x) => x.ev.r > 0).length;

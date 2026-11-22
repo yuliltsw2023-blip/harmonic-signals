@@ -119,18 +119,31 @@ def tf_summary(name: str, bars: list[list[float]]) -> dict:
 # ------------------------------------------------------------------ Claude
 
 DIR = {"type": "string", "enum": ["bullish", "bearish", "sideways"]}
+STEP = {"type": "string"}
 PLAN = {
     "type": "object",
     "additionalProperties": False,
     "required": ["style", "action", "order", "entry", "sl", "tp1", "tp2", "valid_hours",
+                 "poi_lo", "poi_hi", "poi_label", "target_liquidity", "steps", "trigger",
                  "invalidation", "reason"],
     "properties": {
         "style": {"type": "string", "enum": ["intraday", "scalping"]},
-        "action": {"type": "string", "enum": ["buy", "sell", "no_trade"]},
+        # buy/sell = 4 langkah lengkap → boleh entry; wait = skenario tunggu; no_trade = tidak ada skenario
+        "action": {"type": "string", "enum": ["buy", "sell", "wait_buy", "wait_sell", "no_trade"]},
         "order": {"type": "string", "enum": ["limit", "stop", "market"]},
         "entry": {"type": "number"}, "sl": {"type": "number"},
         "tp1": {"type": "number"}, "tp2": {"type": "number"},
         "valid_hours": {"type": "number"},
+        "poi_lo": {"type": "number"}, "poi_hi": {"type": "number"},
+        "poi_label": {"type": "string"},  # mis. "OB M15" / "FVG H1" (pendek)
+        "target_liquidity": {"type": "number"},
+        "steps": {
+            "type": "object",
+            "additionalProperties": False,
+            "required": ["liquidity", "structure", "poi", "entry"],
+            "properties": {"liquidity": STEP, "structure": STEP, "poi": STEP, "entry": STEP},
+        },
+        "trigger": {"type": "string"},
         "invalidation": {"type": "string"},
         "reason": {"type": "string"},
     },
@@ -150,26 +163,41 @@ SCHEMA = {
     },
 }
 
-SYSTEM = """Kamu trader emas (XAU/USD) yang membuat rencana trading teknikal dari data candle asli
-untuk trader ritel Indonesia. Bahasa Indonesia, lugas.
+SYSTEM = """Kamu trader emas (XAU/USD) bergaya Smart Money Concepts yang menyusun rencana untuk
+trader ritel Indonesia. Bahasa Indonesia, lugas. Timeframe: bias & liquidity besar H1,
+struktur + POI M15, konfirmasi entry M5.
 
-Buat TEPAT dua rencana:
-1. style "intraday": arah dari H4/H1, entry & SL berdasarkan struktur M15, target dalam sesi (beberapa jam).
-2. style "scalping": arah dari M15/H1, entry & SL berdasarkan struktur M5, target kecil (≤ 1–2 jam).
+Alur berpikir WAJIB (urut, jangan loncat):
+1. LIQUIDITY — apa yang sedang dicari market? Liquidity mana (BSL di atas / SSL di bawah:
+   swing high/low, equal highs/lows, PDH/PDL, high/low Asia) yang sudah DISAPU dan mana yang
+   masih menunggu diambil (= target).
+2. STRUCTURE — ke mana market bergerak? Baca HH/HL/LH/LL, BOS, CHoCH, MSS. Setelah sweep,
+   apakah muncul perubahan struktur searah rencana di M15?
+3. POI — di mana kita menunggu? Pilih SATU POI (Order Block, FVG, Supply/Demand, Breaker; poi_label pendek mis. "OB M15") yang
+   punya KONTEKS: terbentuk dari pergerakan yang menembus struktur setelah sweep, searah bias,
+   belum terisi penuh. Jangan anggap setiap OB/FVG tempat entry.
+4. ENTRY — kapan bertindak? Hanya setelah: liquidity diambil → struktur berubah → harga kembali
+   ke POI → muncul konfirmasi MSS/CHoCH M5 searah rencana. SL di luar POI/swing konfirmasi +
+   buffer; TP1 = liquidity/swing terdekat (≥ 1R), TP2 = liquidity berikutnya.
 
-Aturan:
-- Ikuti arah tren timeframe besar. Kalau tren campur/sideways tanpa level jelas, atau ada event
-  berdampak tinggi < 30 menit lagi, pilih action "no_trade" (isi angka entry/sl/tp dengan harga
-  sekarang, dan jelaskan di reason apa yang ditunggu).
-- Entry di level yang masuk akal: pullback ke EMA/swing/level sesi (order "limit"), atau
-  breakout swing (order "stop"); "market" hanya kalau harga sedang tepat di zona entry.
-- SL di balik swing/struktur terdekat + buffer kecil. Jarak SL kira-kira 0,8–2,5× ATR timeframe
-  entry (M15 untuk intraday, M5 untuk scalping).
-- TP1 ≥ 1R (target struktur terdekat), TP2 ≈ 2R atau level berikutnya.
-- BUY: sl < entry < tp1 ≤ tp2. SELL: tp2 ≤ tp1 < entry < sl.
-- valid_hours: berapa jam order boleh menunggu terisi (intraday 2–6, scalping 0,5–2).
-- reason 1–2 kalimat (kenapa arah & level itu), invalidation 1 kalimat (kondisi rencana batal).
-- Pakai hanya angka yang ada di data; jangan mengarang level jauh dari harga."""
+Data 'Checklist mekanis' dihitung otomatis dari candle. Ikuti statusnya:
+- Kalau checklist arah itu LENGKAP dan tidak basi → action "buy"/"sell" (order market kalau harga
+  masih di POI, limit kalau menunggu retest kecil).
+- Kalau belum lengkap → action "wait_buy"/"wait_sell": skenario tunggu. Isi poi_lo/poi_hi = zona
+  tunggu, entry = harga rencana di dalam POI, sl/tp = rencana kalau terkonfirmasi, dan
+  "trigger" = urutan kejadian yang ditunggu (mis. "sapu BSL 3585 → MSS M15 bearish → kembali ke
+  OB 3564–3581 → MSS M5 bearish"). Ini BUKAN order, jangan suruh pasang limit.
+- "no_trade" hanya kalau tidak ada skenario masuk akal sama sekali.
+
+Buat TEPAT dua rencana (bisa arah sama atau berbeda):
+1. style "intraday": target liquidity M15/H1 (beberapa jam), SL di luar POI.
+2. style "scalping": target liquidity M5/M15 terdekat (≤ 1–2 jam), SL di luar swing konfirmasi M5.
+Utamakan arah bias H1; skenario lawan arah hanya kalau ada sweep + CHoCH/MSS yang jelas.
+
+steps: isi 4 kalimat pendek MAKS 100 karakter masing-masing (liquidity, structure, poi, entry) — apa yang SUDAH terjadi dan apa
+yang BELUM, dengan angka. reason 1–2 kalimat, invalidation 1 kalimat. Jarak SL kira-kira
+0,8–3× ATR TF entry. BUY: sl < entry < tp1 ≤ tp2. SELL: tp2 ≤ tp1 < entry < sl.
+Hanya pakai angka yang ada di data. Kalau event berdampak tinggi < 30 menit lagi, sebutkan di trigger."""
 
 
 def _fmt_tf(s: dict) -> list[str]:
@@ -223,38 +251,64 @@ def plan(ctx: dict, client: anthropic.Anthropic | None = None) -> tuple[dict, di
 
 # ------------------------------------------------------------------ validasi
 
-def validate(p: dict, price: float, atr_entry: float, atr_h1: float) -> dict:
-    """Tolak rencana yang geometrinya tidak masuk akal → no_trade + catatan."""
-    p = dict(p)
-    p["tf"] = "M15" if p["style"] == "intraday" else "M5"
-    p["valid_hours"] = max(0.5, min(float(p["valid_hours"]), 8.0))
-    if p["action"] == "no_trade":
-        return p
+def _geometry(p: dict, buy: bool, price: float, atr_entry: float, atr_h1: float) -> list[str]:
     e, sl, t1, t2 = p["entry"], p["sl"], p["tp1"], p["tp2"]
     problems = []
-    if p["action"] == "buy" and not (sl < e < t1 <= t2):
+    if buy and not (sl < e < t1 <= t2):
         problems.append("urutan level BUY salah")
-    if p["action"] == "sell" and not (t2 <= t1 < e < sl):
+    if not buy and not (t2 <= t1 < e < sl):
         problems.append("urutan level SELL salah")
     risk = abs(e - sl)
     if atr_entry and not (0.4 * atr_entry <= risk <= 4.0 * atr_entry):
         problems.append(f"jarak SL {risk:.2f} di luar 0,4–4× ATR {atr_entry:.2f}")
     if risk and abs(t1 - e) / risk < 0.9:
         problems.append("TP1 < 1R")
-    if atr_h1 and abs(e - price) > 2.0 * atr_h1:
+    if atr_h1 and abs(e - price) > 2.5 * atr_h1:
         problems.append("entry terlalu jauh dari harga")
-    if p["order"] == "limit" and ((p["action"] == "buy" and e > price) or (p["action"] == "sell" and e < price)):
-        p["order"] = "stop"
-    if p["order"] == "stop" and ((p["action"] == "buy" and e < price) or (p["action"] == "sell" and e > price)):
-        p["order"] = "limit"
-    if problems:
-        p["rejected"] = "; ".join(problems)
-        p["action_proposed"] = p["action"]
-        p["action"] = "no_trade"
+    return problems
+
+
+def validate(p: dict, price: float, atr_entry: float, atr_h1: float,
+             checks: dict | None = None) -> dict:
+    """Gerbang mekanis: buy/sell hanya kalau checklist SMC arah itu lengkap & geometri waras;
+    selain itu turun jadi skenario tunggu (wait_*) atau no_trade."""
+    p = dict(p)
+    p["tf"] = "M15" if p["style"] == "intraday" else "M5"
+    p["valid_hours"] = max(0.5, min(float(p["valid_hours"]), 8.0))
+    act = p["action"]
+    if act == "no_trade":
         return p
-    p["risk"] = round(risk, 2)
-    p["rr1"] = round(abs(t1 - e) / risk, 2)
-    p["rr2"] = round(abs(t2 - e) / risk, 2)
+    buy = act in ("buy", "wait_buy")
+    direction = "buy" if buy else "sell"
+    chk = (checks or {}).get(direction)
+    if chk is not None:
+        fresh = not chk.get("stale")
+        p["check"] = {k: bool(chk[k]) and fresh for k in ("liquidity", "structure", "poi", "confirmation")}
+        p["check"]["stale"] = chk.get("stale", [])
+    if act in ("buy", "sell") and chk is not None and not chk.get("complete"):
+        missing = [k for k in ("liquidity", "structure", "poi", "confirmation") if not chk[k]]
+        p["gated"] = ("checklist belum lengkap: " + ", ".join(missing) if missing
+                      else "alur basi: " + "; ".join(chk.get("stale", [])))
+        p["action"] = act = f"wait_{direction}"
+    problems = _geometry(p, buy, price, atr_entry, atr_h1)
+    if problems:
+        if act in ("buy", "sell"):
+            p["action"] = f"wait_{direction}"
+        p["rejected"] = "; ".join(problems)
+        if "urutan" in p["rejected"]:
+            p["action"] = "no_trade"
+            p["action_proposed"] = act
+            return p
+    if p["action"] in ("buy", "sell"):
+        if p["order"] == "limit" and ((buy and p["entry"] > price) or (not buy and p["entry"] < price)):
+            p["order"] = "stop"
+        if p["order"] == "stop" and ((buy and p["entry"] < price) or (not buy and p["entry"] > price)):
+            p["order"] = "limit"
+    risk = abs(p["entry"] - p["sl"])
+    if risk:
+        p["risk"] = round(risk, 2)
+        p["rr1"] = round(abs(p["tp1"] - p["entry"]) / risk, 2)
+        p["rr2"] = round(abs(p["tp2"] - p["entry"]) / risk, 2)
     return p
 
 
@@ -262,7 +316,7 @@ def validate(p: dict, price: float, atr_entry: float, atr_h1: float) -> dict:
 
 def evaluate(p: dict, created: int, m5: list[list[float]], now: float) -> dict | None:
     """Hasil rencana dari candle M5 setelah dibuat. None = belum bisa dinilai."""
-    if p["action"] == "no_trade":
+    if p.get("action") not in ("buy", "sell") or not p.get("risk"):
         return None
     expiry = created + p["valid_hours"] * 3600
     bars = [b for b in m5 if b[0] >= created]

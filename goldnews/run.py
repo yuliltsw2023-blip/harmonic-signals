@@ -17,7 +17,7 @@ import sys
 import time
 from datetime import datetime, timedelta, timezone
 
-from . import analyst, charts, sources, telegram, trade
+from . import analyst, charts, smc, sources, telegram, trade
 from .sessions import (SESSION_NAMES, SLOT_BY_KEY, UTC, adr, classify, due_slots,
                        recent_sessions, session_window, slot_id)
 from .store import Store
@@ -114,17 +114,38 @@ def build_trade(ctx: dict, analysis: dict, c15: list, metas: list[dict], now: da
     if asia:
         levels.update({"High Asia": asia["high"], "Low Asia": asia["low"]})
     price = m5[-1][4]
+    # ---- Smart Money Concepts: H1 bias & liquidity, M15 struktur + POI, M5 konfirmasi
+    named = {k: v for k, v in levels.items() if v and ("High" in k or "Low" in k)}
+    a1 = smc.analyze(h1, "H1", 3, named, lookback=24)
+    a15 = smc.analyze(c15, "M15", 2, named, lookback=48)
+    a5 = smc.analyze(m5, "M5", 2, lookback=72)
+    checks = {d: smc.checklist(d, a1, a15, a5, c15, m5, price) for d in ("sell", "buy")}
+    smc_lines = smc.describe(a1, price) + [""] + smc.describe(a15, price) + [""] +         smc.describe(a5, price, zones=False) + ["", "### Checklist mekanis (window 8 jam)"]
+    for d, ck in checks.items():
+        def st(k):
+            v = ck[k]
+            if not v:
+                return "BELUM"
+            return f"YA ({v.get('kind', v.get('name', ''))} {v.get('level', v.get('lo', '')):.2f} @ {smc.fmt_ts(v['t'])})"
+        smc_lines.append(f"{d.upper()}: liquidity {st('liquidity')} → structure {st('structure')} → "
+                         f"POI {st('poi')} → konfirmasi M5 {st('confirmation')}"
+                         + (f" · BASI: {'; '.join(ck['stale'])}" if ck['stale'] else "")
+                         + (" · LENGKAP" if ck["complete"] else ""))
     pctx = {"now": int(ts), "target_label": ctx["target_label"], "price": price, "levels": levels, "tfs": tfs,
             "briefing": {"bias": analysis["bias"]["direction"], "confidence": analysis["bias"]["confidence"],
-                         "headline": analysis["headline"], "event_risks": analysis["event_risks"]}}
+                         "headline": analysis["headline"], "event_risks": analysis["event_risks"]},
+            "smc": smc_lines}
     data, usage = trade.plan(pctx)
     atr_of = {s["tf"]: s["atr"] for s in tfs}
     plans = []
     for p in data["plans"][:2]:
         tf = "M15" if p["style"] == "intraday" else "M5"
-        plans.append(trade.validate(p, price, atr_of[tf], atr_of["H1"]))
+        plans.append(trade.validate(p, price, atr_of[tf], atr_of["H1"], checks))
     block = {"t": int(ts), "price": price, "trend": data["trend"], "plans": plans, "usage": usage,
-             "atr": atr_of}
+             "atr": atr_of, "smc": {"h1": a1.trend, "m15": a15.trend, "m5": a5.trend,
+                                    "checks": {d: {k: bool(c[k]) for k in ("liquidity", "structure", "poi",
+                                                                             "confirmation", "complete")}
+                                               for d, c in checks.items()}}}
 
     prev = next((m for m in reversed(metas) if m.get("plan_evals") and any(m["plan_evals"])), None)
     images = []

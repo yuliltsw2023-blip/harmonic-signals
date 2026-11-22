@@ -119,3 +119,47 @@ def test_market_open_weekend_filter():
     assert not market_open(ts(2026, 11, 22, 13, 0))    # Minggu siang
     assert market_open(ts(2026, 11, 22, 23, 5))        # Minggu 18:05 NY = buka
     assert not market_open(ts(2026, 11, 23, 22, 30))   # jeda harian 17:30 NY
+
+
+# ---------------------------------------------------------------- SMC
+from goldnews import smc  # noqa: E402
+
+
+def test_validate_gates_incomplete_checklist():
+    chk = {"sell": {"liquidity": {"t": 1}, "structure": {"t": 2}, "poi": None, "confirmation": None,
+                    "stale": [], "complete": False}}
+    p = validate(_plan(), price=3765.0, atr_entry=10.0, atr_h1=20.0, checks=chk)
+    assert p["action"] == "wait_sell" and "poi" in p["gated"]
+    assert evaluate(p, 1_000_000, [[1_000_300, 3765, 3800, 3700, 3760]], 1_100_000) is None
+
+
+def _zigzag(points, step=300, t0=1_000_000):
+    """Candle 5m mengikuti titik harga (open→close garis lurus antar titik)."""
+    bars, t = [], t0
+    for a, b in zip(points, points[1:]):
+        n = 6
+        for i in range(n):
+            o = a + (b - a) * i / n
+            c = a + (b - a) * (i + 1) / n
+            bars.append([t, o, max(o, c) + 0.2, min(o, c) - 0.2, c])
+            t += step
+    return bars
+
+
+def test_structure_bos_and_choch():
+    # naik HH/HL lalu jatuh tembus HL terakhir → CHoCH/MSS bear
+    bars = _zigzag([100, 110, 105, 115, 108, 120, 112, 125, 100, 95])
+    trend, events, labeled = smc.structure(bars, 2, smc.atr(bars))
+    kinds = [(e.kind, e.dir) for e in events]
+    assert ("BOS", "bull") in kinds
+    assert any(d == "bear" and k in ("CHoCH", "MSS") for k, d in kinds)
+    assert trend == "bear"
+
+
+def test_liquidity_sweep_detected():
+    bars = _zigzag([100, 110, 104, 109, 103, 108])
+    # wick menembus swing high 110 lalu close kembali di bawah
+    t = bars[-1][0] + 300
+    bars += [[t, 108, 111.5, 107, 108.5], [t + 300, 108.5, 109, 106, 107], [t + 600, 107, 108, 105, 106]]
+    sweeps, pools = smc.liquidity(bars, 2, smc.atr(bars), {}, 10)
+    assert any(s[2] == "BSL" and abs(s[3] - 110.2) < 0.5 for s in sweeps)

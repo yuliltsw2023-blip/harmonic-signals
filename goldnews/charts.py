@@ -28,24 +28,33 @@ def chart_img(plan: dict, now: int, api_key: str | None = None) -> bytes:
     start = now - BARS_BACK[tf] * sec
     end = now + 6 * sec  # chart-img tidak menggambar apa pun di kanan candle terakhir
     drawings = []
-    if plan["action"] in ("buy", "sell"):
+    act = plan["action"]
+    if plan.get("poi_lo") and plan.get("poi_hi") and act != "no_trade":
+        bear = act.endswith("sell")
+        drawings.append({"name": "Rectangle",
+                         "input": {"startDatetime": _iso(start + 10 * sec), "endDatetime": _iso(now),
+                                   "startPrice": plan["poi_hi"], "endPrice": plan["poi_lo"]},
+                         "override": {"backgroundColor": "rgba(239,83,80,0.2)" if bear else "rgba(38,166,154,0.2)",
+                                      "lineColor": "rgb(239,83,80)" if bear else "rgb(38,166,154)",
+                                      "lineWidth": 1}})
+    if act in ("buy", "sell"):
         drawings.append({
-            "name": "Long Position" if plan["action"] == "buy" else "Short Position",
+            "name": "Long Position" if act == "buy" else "Short Position",
             # mulai beberapa candle sebelum candle terakhir — kotak di area 'masa depan' tidak digambar
             "input": {"startDatetime": _iso(now - 18 * sec),
                       "endDatetime": _iso(now + max(plan["valid_hours"] * 3600, 12 * sec)),
                       "entryPrice": plan["entry"], "targetPrice": plan["tp2"], "stopPrice": plan["sl"]},
         })
-        drawings.append({"name": "Horizontal Line", "input": {"price": plan["tp1"]},
-                         "override": {"lineColor": "rgb(38,166,154)", "lineWidth": 1, "lineStyle": 2,
-                                      "showLabel": True, "text": f"TP1 {plan['tp1']:.2f}"}})
+    if act != "no_trade" and plan.get("target_liquidity"):
+        drawings.append({"name": "Horizontal Line", "input": {"price": plan["target_liquidity"]},
+                         "override": {"lineColor": "rgb(224,180,76)", "lineWidth": 1, "lineStyle": 2,
+                                      "showLabel": True, "text": f"Target liquidity {plan['target_liquidity']:.2f}"}})
     body = {
         "symbol": "OANDA:XAUUSD", "interval": INTERVAL[tf], "theme": "dark", "style": "candle",
         "width": 800, "height": 600, "timezone": "Asia/Jakarta",
         "range": {"from": _iso(start), "to": _iso(end)},
         # chart-img gratis: maks 3 elemen (studies + drawings) per gambar
-        "studies": [{"name": "Moving Average Exponential", "input": {"length": 20}}]
-        + ([{"name": "Moving Average Exponential", "input": {"length": 50}}] if not drawings else []),
+        "studies": [{"name": "Moving Average Exponential", "input": {"length": 20}}][:max(0, 3 - len(drawings))],
         "drawings": drawings,
     }
     r = requests.post(CHART_IMG_URL, json=body, timeout=60,
@@ -106,7 +115,13 @@ def local_chart(plan: dict, bars: list[list[float]], now: int) -> bytes:
     for s in ax.spines.values():
         s.set_color("#2a2e39")
     ax.grid(color="#1f2330", lw=0.6)
-    act = {"buy": "BUY", "sell": "SELL", "no_trade": "TIDAK ADA SETUP"}[plan["action"]]
+    if plan.get("poi_lo") and plan.get("poi_hi") and plan["action"] != "no_trade":
+        pc = "#ef5350" if plan["action"].endswith("sell") else "#26a69a"
+        ax.add_patch(Rectangle((n - 40, plan["poi_lo"]), 40 + 25, plan["poi_hi"] - plan["poi_lo"],
+                               facecolor=pc, alpha=0.12, edgecolor=pc, ls=":"))
+        ax.text(n - 40, plan["poi_hi"], f" POI {plan.get('poi_label', '')}", color=pc, fontsize=8, va="bottom")
+    act = {"buy": "BUY", "sell": "SELL", "wait_buy": "TUNGGU BUY", "wait_sell": "TUNGGU SELL",
+           "no_trade": "TIDAK ADA SETUP"}[plan["action"]]
     ax.set_title(f"XAU/USD {tf} · {plan['style'].upper()} · {act}", color="#e8e6e3", fontsize=12, loc="left")
     ax.legend(loc="upper left", fontsize=8, facecolor="#131722", labelcolor="#9aa0a6", framealpha=0.6)
     fig.text(0.01, 0.01, "chart cadangan (bukan TradingView)", color="#5f6368", fontsize=7)
