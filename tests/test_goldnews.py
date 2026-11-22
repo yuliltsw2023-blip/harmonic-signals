@@ -109,3 +109,13 @@ def test_evaluate_not_filled():
     t0 = 1_000_000
     bars = [[t0 + i * 300, 3765, 3770, 3760, 3765] for i in range(1, 40)]
     assert evaluate(p, t0, bars, t0 + 40 * 300)["result"] == "not_filled"
+
+
+def test_market_open_weekend_filter():
+    from goldnews.sources import market_open
+    ts = lambda *a: int(datetime(*a, tzinfo=UTC).timestamp())
+    assert market_open(ts(2026, 11, 20, 20, 0))        # Jumat 15:00 NY
+    assert not market_open(ts(2026, 11, 20, 23, 0))    # Jumat 18:00 NY = tutup
+    assert not market_open(ts(2026, 11, 22, 13, 0))    # Minggu siang
+    assert market_open(ts(2026, 11, 22, 23, 5))        # Minggu 18:05 NY = buka
+    assert not market_open(ts(2026, 11, 23, 22, 30))   # jeda harian 17:30 NY

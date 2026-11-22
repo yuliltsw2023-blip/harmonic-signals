@@ -207,7 +207,27 @@ def fetch_xau(api_key: str, errors: list[str], interval: str, outputsize: int) -
         out.append([int(t.timestamp()), round(float(v["open"]), 2), round(float(v["high"]), 2),
                     round(float(v["low"]), 2), round(float(v["close"]), 2)])
     out.sort(key=lambda x: x[0])
+    if interval not in ("1day", "1week"):
+        out = [b for b in out if market_open(b[0])]
     return out
+
+
+_NY = None
+
+
+def market_open(t: int) -> bool:
+    """Emas libur Jumat 17:00 – Minggu 18:00 New York + jeda harian 17:00–18:00 NY.
+    Twelve Data tetap mengirim candle 'hantu' (range kecil) di jam libur → dibuang,
+    kalau tidak ATR/EMA M5–M15 rusak setiap akhir pekan."""
+    global _NY
+    if _NY is None:
+        from zoneinfo import ZoneInfo
+        _NY = ZoneInfo("America/New_York")
+    d = datetime.fromtimestamp(t, UTC).astimezone(_NY)
+    wd, h = d.weekday(), d.hour
+    if wd == 5 or (wd == 4 and h >= 17) or (wd == 6 and h < 18):
+        return False
+    return h != 17
 
 
 def merge_candles(old: list[list[float]], new: list[list[float]], cap: int = 14000) -> list[list[float]]:

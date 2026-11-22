@@ -206,8 +206,11 @@ def render_sessions(sessions: list[dict], bars: list[list[float]], now: int,
 
 def render(plan: dict, bars: list[list[float]], now: int, errors: list[str]) -> tuple[bytes, str]:
     """→ (png, sumber) — 'tradingview' atau 'cadangan'."""
+    # patokan = candle asli terakhir (saat pasar libur 'now' jatuh di jam tanpa candle
+    # dan kotak posisi tidak tergambar)
+    anchor = int(bars[-1][0] + TF_SEC[plan["tf"]]) if bars else now
     try:
-        return chart_img(plan, now), "tradingview"
+        return chart_img(plan, min(now, anchor)), "tradingview"
     except Exception as e:  # noqa: BLE001
         errors.append(f"chart-img: {str(e)[:80]}")
     return local_chart(plan, bars, now), "cadangan"
